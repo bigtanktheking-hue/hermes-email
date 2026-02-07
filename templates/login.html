@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>HERMES - Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        body { background: #111827; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center">
+    <form method="POST" class="bg-gray-800 rounded-2xl p-8 w-80 shadow-xl">
+        <div class="text-center mb-6">
+            <div class="text-4xl mb-2">&#9889;</div>
+            <h1 class="text-2xl font-bold text-cyan-400">HERMES</h1>
+            <p class="text-gray-400 text-sm mt-1">Email Intelligence</p>
+        </div>
+        {% if error %}
+        <div class="bg-red-900 text-red-200 text-sm rounded-lg p-3 mb-4">{{ error }}</div>
+        {% endif %}
+        <input type="password" name="password" placeholder="Password" autofocus
+            class="w-full bg-gray-700 text-white rounded-lg px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+        <button type="submit"
+            class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-lg py-3 transition">
+            Sign In
+        </button>
+    </form>
+</body>
+</html>

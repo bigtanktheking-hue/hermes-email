@@ -1,0 +1,154 @@
+{
+  "name": "HERMES — VIP Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "vip-schedule",
+      "name": "Every 1 Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5055/api/vip/check",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ email: 'test@example.com' }) }}",
+        "options": {}
+      },
+      "id": "vip-placeholder",
+      "name": "Note",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "notes": "This workflow requires IMAP credentials. See setup instructions below."
+    },
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "nothing",
+        "options": {}
+      },
+      "id": "vip-imap-trigger",
+      "name": "IMAP Email Trigger",
+      "type": "n8n-nodes-base.imapEmail",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "disabled": true,
+      "notes": "Enable after configuring IMAP credentials: imap.gmail.com:993 SSL with App Password",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "// VIP Domain list — 79 entertainment industry domains\nconst VIP_DOMAINS = [\n  \"netflix.com\", \"fox.com\", \"foxnews.com\", \"foxsports.com\",\n  \"20thcenturystudios.com\", \"20television.com\", \"disney.com\",\n  \"disneystreaming.com\", \"abc.com\", \"espn.com\", \"hulu.com\",\n  \"disneyplus.com\", \"pixar.com\", \"marvel.com\", \"lucasfilm.com\",\n  \"wbd.com\", \"warnerbros.com\", \"hbo.com\", \"max.com\",\n  \"warnermedia.com\", \"turner.com\", \"cartoonnetwork.com\",\n  \"discovery.com\", \"nbcuni.com\", \"nbc.com\", \"peacocktv.com\",\n  \"universalpictures.com\", \"comcast.com\", \"bravotv.com\",\n  \"focusfeatures.com\", \"paramount.com\", \"cbs.com\", \"sho.com\",\n  \"showtime.com\", \"showtime.net\", \"paramountplus.com\", \"nick.com\",\n  \"mtvstaff.com\", \"mtv.com\", \"bet.com\", \"bet.net\",\n  \"comedycentral.com\", \"cc.com\", \"vh1.com\", \"viacom.com\",\n  \"viacomcbs.com\", \"pluto.tv\", \"spe.sony.com\", \"sonypictures.com\",\n  \"sony.com\", \"sonymusic.com\", \"lionsgate.com\", \"starz.com\",\n  \"amazonstudios.com\", \"amazon.com\", \"mgm.com\", \"apple.com\",\n  \"cwtv.com\", \"fxnetworks.com\", \"natgeo.com\",\n  \"nationalgeographic.com\", \"amcnetworks.com\", \"aenetworks.com\",\n  \"hallmarkchannel.com\", \"crownmedia.com\", \"tubi.tv\",\n  \"a24films.com\", \"neonrated.com\", \"ifcfilms.com\",\n  \"magpictures.com\", \"bleeckerstreetmedia.com\",\n  \"searchlightpictures.com\", \"annapurna.com\", \"skydance.com\",\n  \"usanetwork.com\", \"syfy.com\", \"lifetime.com\", \"history.com\",\n  \"bravo.com\"\n];\n\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const from = (item.json.from || item.json.headerLines?.from || '').toLowerCase();\n  const subject = item.json.subject || item.json.headerLines?.subject || '(no subject)';\n  \n  // Extract domain from sender email\n  const emailMatch = from.match(/@([\\w.-]+)/i);\n  const senderDomain = emailMatch ? emailMatch[1] : '';\n  \n  const isVip = VIP_DOMAINS.some(d => senderDomain === d || senderDomain.endsWith('.' + d));\n  \n  if (isVip) {\n    results.push({\n      json: {\n        from: from,\n        subject: subject,\n        domain: senderDomain,\n        is_vip: true\n      }\n    });\n  }\n}\n\nreturn results.length > 0 ? results : [];"
+      },
+      "id": "vip-domain-check",
+      "name": "Check VIP Domain",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "vip-cond",
+              "leftValue": "={{ $json.is_vip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "vip-if",
+      "name": "Is VIP?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "command": "osascript -e 'display notification \"From: {{ $json.from }}\\nSubject: {{ $json.subject }}\" with title \"HERMES VIP Alert\" subtitle \"{{ $json.domain }}\" sound name \"Glass\"'"
+      },
+      "id": "vip-notify",
+      "name": "macOS Notification",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [660, -60]
+    }
+  ],
+  "connections": {
+    "IMAP Email Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check VIP Domain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 1 Minute": {
+      "main": [
+        []
+      ]
+    },
+    "Check VIP Domain": {
+      "main": [
+        [
+          {
+            "node": "Is VIP?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is VIP?": {
+      "main": [
+        [
+          {
+            "node": "macOS Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "hermes"
+    }
+  ]
+}

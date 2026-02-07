@@ -1,0 +1,159 @@
+{
+  "name": "HERMES — Inbox Zero",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9,12,15,18,21 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "inbox-zero-cron",
+      "name": "Every 3hr Weekdays",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5055/api/inbox-zero",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "batch",
+              "value": "10"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "hermes-local-key"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "inbox-zero-http",
+      "name": "POST /api/inbox-zero",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst total = data.email_count || 0;\nconst archived = data.archived || 0;\nconst trashed = data.trashed || 0;\nconst kept = data.kept_for_action || 0;\nconst remaining = data.unread_remaining || 0;\nconst isZero = data.inbox_zero || false;\n\nif (total === 0) {\n  return [{ json: { message: 'Inbox zero already!', kept: 0, notify: false } }];\n}\n\nlet message = `Batch: archived ${archived}, trashed ${trashed}, kept ${kept} for action.`;\nif (remaining > 0) {\n  message += ` ${remaining} unread remaining.`;\n}\nif (isZero) {\n  message = 'Inbox zero achieved!';\n}\n\nreturn [{ json: { message, kept, notify: kept > 0 || isZero } }];"
+      },
+      "id": "inbox-zero-format",
+      "name": "Format Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "notify-cond",
+              "leftValue": "={{ $json.notify }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "inbox-zero-if",
+      "name": "Should Notify?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "command": "osascript -e 'display notification \"{{ $json.message }}\" with title \"HERMES Inbox Zero\" sound name \"Submarine\"'"
+      },
+      "id": "inbox-zero-notify",
+      "name": "macOS Notification",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [880, -60]
+    }
+  ],
+  "connections": {
+    "Every 3hr Weekdays": {
+      "main": [
+        [
+          {
+            "node": "POST /api/inbox-zero",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /api/inbox-zero": {
+      "main": [
+        [
+          {
+            "node": "Format Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Message": {
+      "main": [
+        [
+          {
+            "node": "Should Notify?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Notify?": {
+      "main": [
+        [
+          {
+            "node": "macOS Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "hermes"
+    }
+  ]
+}

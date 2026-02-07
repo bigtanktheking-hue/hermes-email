@@ -1,0 +1,118 @@
+{
+  "name": "HERMES — Morning Briefing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "briefing-cron",
+      "name": "Daily 7 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://127.0.0.1:5055/api/briefing",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "hours",
+              "value": "12"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "hermes-local-key"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "briefing-http",
+      "name": "GET /api/briefing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst count = data.email_count || 0;\nconst summary = data.summary || 'No summary available.';\n\nconst actionItems = (data.action_items || []).slice(0, 3);\nconst actionText = actionItems.length > 0 \n  ? '\\n\\nAction items:\\n' + actionItems.map(a => '• ' + a).join('\\n')\n  : '';\n\nconst message = `${count} emails — ${summary}${actionText}`;\nconst shortMsg = message.length > 200 ? message.substring(0, 197) + '...' : message;\n\nreturn [{ json: { message: shortMsg, count } }];"
+      },
+      "id": "briefing-format",
+      "name": "Format Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "command": "osascript -e 'display notification \"{{ $json.message }}\" with title \"HERMES Morning Briefing\" subtitle \"{{ $json.count }} emails\" sound name \"Blow\"'"
+      },
+      "id": "briefing-notify",
+      "name": "macOS Notification",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [660, 0]
+    }
+  ],
+  "connections": {
+    "Daily 7 AM": {
+      "main": [
+        [
+          {
+            "node": "GET /api/briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET /api/briefing": {
+      "main": [
+        [
+          {
+            "node": "Format Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Message": {
+      "main": [
+        [
+          {
+            "node": "macOS Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "hermes"
+    }
+  ]
+}

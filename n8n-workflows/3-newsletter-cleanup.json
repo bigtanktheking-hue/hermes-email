@@ -1,0 +1,109 @@
+{
+  "name": "HERMES — Newsletter Cleanup",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10,18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cleanup-cron",
+      "name": "10 AM and 6 PM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5055/api/cleanup",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "hermes-local-key"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "cleanup-http",
+      "name": "POST /api/cleanup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst total = data.email_count || 0;\nconst archived = data.archived || 0;\nconst deleted = data.deleted || 0;\nconst kept = data.kept || 0;\n\nif (total === 0) {\n  return [{ json: { message: 'Inbox clean — nothing to process.', total: 0, skip: true } }];\n}\n\nconst message = `Processed ${total}: archived ${archived}, deleted ${deleted}, kept ${kept}`;\nreturn [{ json: { message, total, skip: false } }];"
+      },
+      "id": "cleanup-format",
+      "name": "Format Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "command": "osascript -e 'display notification \"{{ $json.message }}\" with title \"HERMES Cleanup\" sound name \"Purr\"'"
+      },
+      "id": "cleanup-notify",
+      "name": "macOS Notification",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [660, 0]
+    }
+  ],
+  "connections": {
+    "10 AM and 6 PM": {
+      "main": [
+        [
+          {
+            "node": "POST /api/cleanup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /api/cleanup": {
+      "main": [
+        [
+          {
+            "node": "Format Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Message": {
+      "main": [
+        [
+          {
+            "node": "macOS Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "hermes"
+    }
+  ]
+}
