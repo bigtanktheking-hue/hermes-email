@@ -5,61 +5,730 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MailTank</title>
     <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#0891b2">
+    <meta name="theme-color" content="#0a0a1a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MailTank">
     <link rel="apple-touch-icon" href="/static/icon-192.png">
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        :root { --cyan: #06b6d4; --bg: #111827; --card: #1f2937; --card2: #374151; }
-        body { background: var(--bg); -webkit-tap-highlight-color: transparent; padding-bottom: 80px; }
+        /* ── Reset & Tokens ─────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-deep: #0a0a1a;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-bg-heavy: rgba(255, 255, 255, 0.08);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-border-light: rgba(255, 255, 255, 0.12);
+            --accent: #06b6d4;
+            --accent-hover: #22d3ee;
+            --accent-glow: rgba(6, 182, 212, 0.3);
+            --accent-muted: rgba(6, 182, 212, 0.15);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --text-dim: rgba(255, 255, 255, 0.25);
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #22c55e;
+            --blue: #3b82f6;
+            --purple: #a855f7;
+            --yellow: #eab308;
+            --radius: 16px;
+            --radius-sm: 10px;
+            --radius-xs: 8px;
+            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            -webkit-tap-highlight-color: transparent;
+            padding-bottom: 80px;
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        /* ── Animated Gradient Background ───────────── */
+        .bg-gradient {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background: linear-gradient(135deg, #0a0a2e 0%, #1a0a3e 25%, #0a1a3e 50%, #0a2a3a 75%, #0a0a2e 100%);
+            background-size: 400% 400%;
+            animation: meshGradient 15s ease infinite;
+        }
+
+        @keyframes meshGradient {
+            0%, 100% { background-position: 0% 50%; }
+            25% { background-position: 100% 0%; }
+            50% { background-position: 100% 100%; }
+            75% { background-position: 0% 100%; }
+        }
+
+        .grain {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            opacity: 0.02;
+            pointer-events: none;
+        }
+
+        .app-content {
+            position: relative;
+            z-index: 2;
+        }
+
+        /* ── Glass Components ───────────────────────── */
+        .card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 16px;
+            transition: var(--transition);
+        }
+
+        .card-interactive {
+            cursor: pointer;
+        }
+
+        .card-interactive:hover {
+            background: var(--glass-bg-heavy);
+            border-color: var(--glass-border-light);
+        }
+
+        .card-sm {
+            padding: 12px;
+            border-radius: var(--radius-sm);
+        }
+
+        /* ── Typography ─────────────────────────────── */
+        .text-accent { color: var(--accent); }
+        .text-secondary { color: var(--text-secondary); }
+        .text-muted { color: var(--text-muted); }
+        .text-dim { color: var(--text-dim); }
+        .text-danger { color: var(--danger); }
+        .text-warning { color: var(--warning); }
+        .text-success { color: var(--success); }
+        .text-blue { color: var(--blue); }
+        .text-purple { color: var(--purple); }
+        .text-yellow { color: var(--yellow); }
+
+        .text-xs { font-size: 11px; }
+        .text-sm { font-size: 13px; }
+        .text-base { font-size: 15px; }
+        .text-lg { font-size: 18px; }
+        .text-xl { font-size: 22px; }
+        .text-2xl { font-size: 26px; }
+        .text-3xl { font-size: 32px; }
+        .font-semibold { font-weight: 600; }
+        .font-bold { font-weight: 700; }
+        .uppercase { text-transform: uppercase; }
+        .italic { font-style: italic; }
+        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .whitespace-pre-wrap { white-space: pre-wrap; }
+        .leading-relaxed { line-height: 1.7; }
+        .select-none { user-select: none; }
+
+        /* ── Layout ─────────────────────────────────── */
+        .flex { display: flex; }
+        .flex-1 { flex: 1; }
+        .flex-col { flex-direction: column; }
+        .items-center { align-items: center; }
+        .items-start { align-items: start; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .justify-end { justify-content: flex-end; }
+        .justify-start { justify-content: flex-start; }
+        .flex-shrink-0 { flex-shrink: 0; }
+        .min-w-0 { min-width: 0; }
+        .w-full { width: 100%; }
+        .gap-1 { gap: 4px; }
+        .gap-2 { gap: 8px; }
+        .gap-3 { gap: 12px; }
+
+        .grid { display: grid; }
+        .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+
+        .space-y-1 > * + * { margin-top: 4px; }
+        .space-y-2 > * + * { margin-top: 8px; }
+        .space-y-3 > * + * { margin-top: 12px; }
+        .space-y-4 > * + * { margin-top: 16px; }
+
+        .p-2 { padding: 8px; }
+        .p-3 { padding: 12px; }
+        .p-4 { padding: 16px; }
+        .px-2 { padding-left: 8px; padding-right: 8px; }
+        .px-3 { padding-left: 12px; padding-right: 12px; }
+        .px-4 { padding-left: 16px; padding-right: 16px; }
+        .py-1 { padding-top: 4px; padding-bottom: 4px; }
+        .py-2 { padding-top: 8px; padding-bottom: 8px; }
+        .py-3 { padding-top: 12px; padding-bottom: 12px; }
+        .py-4 { padding-top: 16px; padding-bottom: 16px; }
+        .py-8 { padding-top: 32px; padding-bottom: 32px; }
+        .pt-2 { padding-top: 8px; }
+        .pt-3 { padding-top: 12px; }
+        .pb-1 { padding-bottom: 4px; }
+        .pl-2 { padding-left: 8px; }
+        .pl-3 { padding-left: 12px; }
+        .mb-1 { margin-bottom: 4px; }
+        .mb-2 { margin-bottom: 8px; }
+        .mb-3 { margin-bottom: 12px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mb-6 { margin-bottom: 24px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-3 { margin-top: 12px; }
+        .mt-4 { margin-top: 16px; }
+        .ml-2 { margin-left: 8px; }
+        .text-center { text-align: center; }
+        .text-left { text-align: left; }
+        .text-right { text-align: right; }
+        .hidden { display: none !important; }
+        .overflow-y-auto { overflow-y: auto; }
+        .whitespace-nowrap { white-space: nowrap; }
+        .relative { position: relative; }
+
+        /* ── Colored Accents ────────────────────────── */
+        .accent-cyan { border-left: 3px solid var(--accent); }
+        .accent-yellow { border-left: 3px solid var(--warning); }
+        .accent-green { border-left: 3px solid var(--success); }
+        .accent-red { border-left: 3px solid var(--danger); }
+        .accent-blue { border-left: 3px solid var(--blue); }
+        .accent-purple { border-left: 3px solid var(--purple); }
+
+        .border-b { border-bottom: 1px solid var(--glass-border); }
+        .border-l-2 { border-left: 2px solid; }
+
+        /* ── Stat Cards ─────────────────────────────── */
+        .stat-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+        }
+
+        .stat-card:hover {
+            background: var(--glass-bg-heavy);
+            transform: translateY(-1px);
+        }
+
+        .stat-card.stat-cyan::before { background: var(--accent); }
+        .stat-card.stat-yellow::before { background: var(--warning); }
+        .stat-card.stat-green::before { background: var(--success); }
+        .stat-card.stat-purple::before { background: var(--purple); }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        /* ── Header ─────────────────────────────────── */
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            background: rgba(10, 10, 26, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--glass-border);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .app-header h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent);
+            text-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .header-link {
+            color: var(--text-muted);
+            font-size: 13px;
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .header-link:hover { color: var(--text-primary); }
+
+        /* ── Buttons ────────────────────────────────── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            color: white;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #06b6d4, #0d9488);
+            padding: 12px 20px;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 24px rgba(6, 182, 212, 0.3);
+        }
+
+        .btn-primary-full {
+            width: 100%;
+            background: linear-gradient(135deg, #06b6d4, #0d9488);
+            padding: 14px 20px;
+            border-radius: var(--radius);
+        }
+
+        .btn-primary-full:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 24px rgba(6, 182, 212, 0.3);
+        }
+
+        .btn-sm {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: var(--radius-xs);
+            background: rgba(6, 182, 212, 0.2);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            color: var(--accent);
+        }
+
+        .btn-sm:hover {
+            background: rgba(6, 182, 212, 0.3);
+        }
+
+        .btn-glass {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            width: 100%;
+            text-align: left;
+            color: var(--text-primary);
+        }
+
+        .btn-glass:hover {
+            background: var(--glass-bg-heavy);
+            border-color: var(--glass-border-light);
+        }
+
+        .btn-send {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            padding: 12px 20px;
+            border-radius: var(--radius);
+        }
+
+        .btn-send:hover { box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3); }
+
+        .btn-cancel {
+            background: var(--glass-bg-heavy);
+            border: 1px solid var(--glass-border);
+            padding: 12px 16px;
+            border-radius: var(--radius);
+        }
+
+        .btn-cancel:hover { background: rgba(255, 255, 255, 0.1); }
+
+        .btn-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .btn-reply {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 5px 10px;
+            border-radius: var(--radius-xs);
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.25);
+            color: var(--accent);
+        }
+
+        .btn-reply:hover { background: rgba(6, 182, 212, 0.25); }
+
+        .btn-disabled { opacity: 0.5; pointer-events: none; }
+
+        .link-accent {
+            color: var(--accent);
+            text-decoration: none;
+            cursor: pointer;
+            background: none;
+            border: none;
+            font: inherit;
+        }
+
+        .link-accent:hover { text-decoration: underline; }
+
+        /* ── Inputs ─────────────────────────────────── */
+        .input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: var(--radius-sm);
+            padding: 10px 16px;
+            font-size: 14px;
+            color: var(--text-primary);
+            outline: none;
+            transition: var(--transition);
+        }
+
+        .input::placeholder { color: var(--text-muted); }
+        .input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .input-chat {
+            flex: 1;
+            border-radius: 22px;
+            padding: 12px 18px;
+            font-size: 14px;
+        }
+
+        textarea.input {
+            resize: vertical;
+            border-radius: var(--radius);
+        }
+
+        .accent-checkbox { accent-color: var(--accent); }
+
+        /* ── Tabs ───────────────────────────────────── */
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-        .nav-btn.active { color: var(--cyan); }
-        .nav-btn.active svg { stroke: var(--cyan); }
-        .spinner { border: 3px solid #374151; border-top-color: var(--cyan); border-radius: 50%; width: 24px; height: 24px; animation: spin 0.7s linear infinite; display: inline-block; }
+
+        /* ── Bottom Navigation ──────────────────────── */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 50;
+            background: rgba(10, 10, 26, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-top: 1px solid var(--glass-border);
+            display: flex;
+            padding-bottom: env(safe-area-inset-bottom, 8px);
+        }
+
+        .nav-btn {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 8px 0 4px;
+            font-size: 10px;
+            color: var(--text-muted);
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+        }
+
+        .nav-btn svg {
+            width: 22px;
+            height: 22px;
+            margin-bottom: 3px;
+            stroke: currentColor;
+            transition: var(--transition);
+        }
+
+        .nav-btn.active {
+            color: var(--accent);
+        }
+
+        .nav-btn.active svg {
+            stroke: var(--accent);
+            filter: drop-shadow(0 0 6px var(--accent-glow));
+        }
+
+        .nav-btn.active::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 8px var(--accent);
+        }
+
+        /* ── Spinner ────────────────────────────────── */
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.08);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 0.7s linear infinite;
+            display: inline-block;
+        }
+
         @keyframes spin { to { transform: rotate(360deg); } }
-        .chat-bubble { max-width: 85%; word-wrap: break-word; }
-        .priority-high { border-left: 4px solid #ef4444; }
-        .priority-medium { border-left: 4px solid #f59e0b; }
-        .priority-low { border-left: 4px solid #6b7280; }
-        .fade-in { animation: fadeIn 0.3s ease-in; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        /* Safe area padding for notch phones */
-        .bottom-nav { padding-bottom: env(safe-area-inset-bottom, 8px); }
-        .email-modal { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.8); overflow-y: auto; }
-        .email-modal-content { min-height: 100vh; }
-        /* Voice UI */
-        #mic-btn.listening { background: #ef4444; animation: pulse-mic 1.5s ease-in-out infinite; }
-        #mic-btn.processing { background: #f59e0b; }
-        @keyframes pulse-mic { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); } 50% { box-shadow: 0 0 0 10px rgba(239,68,68,0); } }
-        #voice-indicator .red-dot { width: 8px; height: 8px; background: #ef4444; border-radius: 50%; animation: blink-dot 1s step-end infinite; }
+
+        /* ── Animations ─────────────────────────────── */
+        .fade-in {
+            animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Chat ───────────────────────────────────── */
+        .chat-bubble {
+            max-width: 85%;
+            word-wrap: break-word;
+        }
+
+        .chat-bubble-user {
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 16px 16px 4px 16px;
+            padding: 12px 16px;
+            font-size: 14px;
+        }
+
+        .chat-bubble-assistant {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px 16px 16px 4px;
+            padding: 12px 16px;
+            font-size: 14px;
+        }
+
+        .chat-input-area {
+            padding: 12px;
+            border-top: 1px solid var(--glass-border);
+            background: rgba(10, 10, 26, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        /* ── Priority Borders ───────────────────────── */
+        .priority-high { border-left: 4px solid var(--danger); }
+        .priority-medium { border-left: 4px solid var(--warning); }
+        .priority-low { border-left: 4px solid rgba(255, 255, 255, 0.15); }
+
+        /* ── Email Modal ────────────────────────────── */
+        .email-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(5, 5, 15, 0.9);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            overflow-y: auto;
+        }
+
+        .email-modal-content {
+            min-height: 100vh;
+            padding: 16px;
+            position: relative;
+            z-index: 101;
+        }
+
+        /* ── Toast ──────────────────────────────────── */
+        .toast {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            z-index: 200;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .toast-error {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+        }
+
+        .toast-success {
+            background: rgba(34, 197, 94, 0.15);
+            border-color: rgba(34, 197, 94, 0.3);
+            color: #86efac;
+        }
+
+        /* ── Voice ──────────────────────────────────── */
+        #mic-btn.listening {
+            background: rgba(239, 68, 68, 0.2) !important;
+            border-color: rgba(239, 68, 68, 0.4) !important;
+            animation: pulse-mic 1.5s ease-in-out infinite;
+        }
+
+        #mic-btn.processing {
+            background: rgba(245, 158, 11, 0.2) !important;
+            border-color: rgba(245, 158, 11, 0.4) !important;
+        }
+
+        @keyframes pulse-mic {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        }
+
+        #voice-indicator .red-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--danger);
+            border-radius: 50%;
+            animation: blink-dot 1s step-end infinite;
+        }
+
         @keyframes blink-dot { 50% { opacity: 0; } }
+
+        /* ── Badge / Pill ───────────────────────────── */
+        .badge {
+            font-size: 11px;
+            padding: 2px 10px;
+            border-radius: 99px;
+            font-weight: 600;
+        }
+
+        .badge-on {
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #86efac;
+        }
+
+        .badge-off {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            color: var(--text-muted);
+        }
+
+        /* ── Dot indicator ──────────────────────────── */
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .dot-accent { background: var(--accent); }
+        .dot-muted { background: var(--text-dim); }
+
+        /* ── Section Label ──────────────────────────── */
+        .section-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        /* ── Error Alert ────────────────────────────── */
+        .error-card {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            font-size: 13px;
+            border-radius: var(--radius);
+            padding: 16px;
+        }
+
+        /* ── Responsive ─────────────────────────────── */
+        @media (max-width: 400px) {
+            .stat-value { font-size: 26px; }
+            .stat-label { font-size: 11px; }
+            .nav-btn { font-size: 9px; }
+            .nav-btn svg { width: 20px; height: 20px; }
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
     </style>
 </head>
-<body class="text-gray-100">
+<body>
+    <div class="bg-gradient"></div>
+    <svg class="grain" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+        <filter id="grain-filter">
+            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch"/>
+        </filter>
+        <rect width="100%" height="100%" filter="url(#grain-filter)" fill="white"/>
+    </svg>
+
+    <div class="app-content">
 
     <!-- Email Detail Modal -->
     <div id="email-modal" class="email-modal hidden" role="dialog" aria-modal="true" aria-label="Email detail">
-        <div class="email-modal-content bg-gray-900 p-4">
+        <div class="email-modal-content">
             <div class="flex items-center justify-between mb-4">
-                <button onclick="closeEmailModal()" class="text-gray-400 hover:text-white flex items-center gap-1">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                <button onclick="closeEmailModal()" class="btn btn-cancel flex items-center gap-1" style="width:auto; padding:8px 14px;">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:18px;height:18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                     Back
                 </button>
-                <button id="modal-draft-btn" onclick="draftReplyModal()" class="bg-cyan-700 hover:bg-cyan-600 text-white text-sm rounded-lg px-3 py-1.5 transition">Draft Reply</button>
+                <button id="modal-draft-btn" onclick="draftReplyModal()" class="btn btn-sm">Draft Reply</button>
             </div>
             <div id="modal-subject" class="text-lg font-bold mb-1"></div>
-            <div id="modal-from" class="text-cyan-400 text-sm mb-1"></div>
-            <div id="modal-date" class="text-gray-500 text-xs mb-4"></div>
-            <div id="modal-body" class="text-gray-200 text-sm whitespace-pre-wrap leading-relaxed mb-6 bg-gray-800 rounded-xl p-4"></div>
+            <div id="modal-from" class="text-accent text-sm mb-1"></div>
+            <div id="modal-date" class="text-dim text-xs mb-4"></div>
+            <div id="modal-body" class="card text-secondary text-sm whitespace-pre-wrap leading-relaxed mb-6"></div>
             <div id="modal-reply-section" class="hidden">
-                <div class="text-cyan-400 text-xs font-semibold uppercase mb-2">Reply</div>
-                <textarea id="modal-reply-text" rows="6" class="w-full bg-gray-800 text-white rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 mb-3" placeholder="Type your reply..."></textarea>
+                <div class="text-accent text-xs font-semibold uppercase mb-2">Reply</div>
+                <textarea id="modal-reply-text" rows="6" class="input mb-3" placeholder="Type your reply..."></textarea>
                 <div class="flex gap-2">
-                    <button onclick="sendReplyModal()" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-semibold rounded-xl py-3 transition">Send Reply</button>
-                    <button onclick="closeReplySection()" class="bg-gray-700 hover:bg-gray-600 text-white rounded-xl px-4 py-3 transition">Cancel</button>
+                    <button onclick="sendReplyModal()" class="btn btn-send flex-1">Send Reply</button>
+                    <button onclick="closeReplySection()" class="btn btn-cancel">Cancel</button>
                 </div>
                 <div id="modal-send-status" class="hidden mt-2"></div>
             </div>
@@ -67,33 +736,33 @@
     </div>
 
     <!-- Header -->
-    <header class="sticky top-0 z-40 bg-gray-900 bg-opacity-95 backdrop-filter backdrop-blur px-4 py-3 flex items-center justify-between border-b border-gray-700">
+    <header class="app-header">
         <div class="flex items-center gap-2">
-            <span class="text-xl">&#9889;</span>
-            <h1 class="text-lg font-bold text-cyan-400">MailTank</h1>
+            <span style="font-size:20px;">&#9889;</span>
+            <h1>MailTank</h1>
         </div>
-        <a href="/logout" class="text-gray-400 text-sm hover:text-white">Logout</a>
+        <a href="/logout" class="header-link">Logout</a>
     </header>
 
     <!-- Dashboard Tab -->
     <div id="tab-dashboard" class="tab-content active p-4 space-y-3">
         <!-- Stat Cards (clickable) -->
         <div class="grid grid-cols-2 gap-3">
-            <button onclick="togglePanel('panel-unread')" class="bg-gray-800 rounded-xl p-4 text-center hover:bg-gray-750 transition text-left">
-                <div id="stat-unread" class="text-3xl font-bold text-cyan-400">--</div>
-                <div class="text-gray-400 text-sm mt-1">Unread &darr;</div>
+            <button onclick="togglePanel('panel-unread')" class="stat-card stat-cyan">
+                <div id="stat-unread" class="stat-value text-accent">--</div>
+                <div class="stat-label">Unread &darr;</div>
             </button>
-            <button onclick="togglePanel('panel-vip-emails')" class="bg-gray-800 rounded-xl p-4 text-center hover:bg-gray-750 transition text-left">
-                <div id="stat-vip" class="text-3xl font-bold text-yellow-400">--</div>
-                <div class="text-gray-400 text-sm mt-1">VIP Emails &darr;</div>
+            <button onclick="togglePanel('panel-vip-emails')" class="stat-card stat-yellow">
+                <div id="stat-vip" class="stat-value text-yellow">--</div>
+                <div class="stat-label">VIP Emails &darr;</div>
             </button>
-            <button onclick="togglePanel('panel-vip-contacts')" class="bg-gray-800 rounded-xl p-4 text-center hover:bg-gray-750 transition text-left">
-                <div id="stat-contacts" class="text-2xl font-bold text-green-400">--</div>
-                <div class="text-gray-400 text-sm mt-1">VIP Contacts &darr;</div>
+            <button onclick="togglePanel('panel-vip-contacts')" class="stat-card stat-green">
+                <div id="stat-contacts" class="stat-value text-success" style="font-size:26px;">--</div>
+                <div class="stat-label">VIP Contacts &darr;</div>
             </button>
-            <button onclick="togglePanel('panel-vip-domains')" class="bg-gray-800 rounded-xl p-4 text-center hover:bg-gray-750 transition text-left">
-                <div id="stat-domains" class="text-2xl font-bold text-purple-400">--</div>
-                <div class="text-gray-400 text-sm mt-1">VIP Domains &darr;</div>
+            <button onclick="togglePanel('panel-vip-domains')" class="stat-card stat-purple">
+                <div id="stat-domains" class="stat-value text-purple" style="font-size:26px;">--</div>
+                <div class="stat-label">VIP Domains &darr;</div>
             </button>
         </div>
 
@@ -103,8 +772,8 @@
         <div id="panel-vip-contacts" class="hidden"></div>
         <div id="panel-vip-domains" class="hidden"></div>
 
-        <button onclick="getBriefing()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-xl py-3 transition flex items-center justify-center gap-2">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <button onclick="getBriefing()" class="btn btn-primary-full">
+            <svg style="width:18px;height:18px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
             Get Morning Briefing
         </button>
         <div id="briefing-result" class="hidden"></div>
@@ -112,8 +781,8 @@
         <!-- Recent Unread Emails Feed -->
         <div class="mt-2">
             <div class="flex items-center justify-between mb-2">
-                <h2 class="text-sm font-semibold text-gray-400 uppercase">Recent Unread</h2>
-                <button onclick="draftAllRepliesHome()" class="bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold rounded-lg px-3 py-1.5 transition">Draft All Replies</button>
+                <h2 class="section-label">Recent Unread</h2>
+                <button onclick="draftAllRepliesHome()" class="btn btn-sm">Draft All Replies</button>
             </div>
             <div id="home-emails" class="space-y-2"></div>
             <div id="home-drafts" class="hidden mt-3"></div>
@@ -122,7 +791,7 @@
 
     <!-- Priority Tab -->
     <div id="tab-priority" class="tab-content p-4">
-        <button onclick="getPriority()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-xl py-3 mb-4 transition">
+        <button onclick="getPriority()" class="btn btn-primary-full mb-4">
             Scan Priority
         </button>
         <div id="priority-result" class="space-y-2"></div>
@@ -130,26 +799,26 @@
 
     <!-- Actions Tab -->
     <div id="tab-actions" class="tab-content p-4 space-y-3">
-        <button onclick="runCleanup()" class="w-full bg-gray-800 hover:bg-gray-700 text-white rounded-xl p-4 text-left transition border border-gray-700">
+        <button onclick="runCleanup()" class="btn btn-glass">
             <div class="font-semibold flex items-center gap-2">
-                <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                <svg style="width:18px;height:18px;" class="text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 Newsletter Cleanup
             </div>
-            <div class="text-gray-400 text-sm mt-1">Archive/delete promotions &amp; newsletters</div>
+            <div class="text-muted text-sm mt-1">Archive/delete promotions &amp; newsletters</div>
         </button>
-        <button onclick="runInboxZero()" class="w-full bg-gray-800 hover:bg-gray-700 text-white rounded-xl p-4 text-left transition border border-gray-700">
+        <button onclick="runInboxZero()" class="btn btn-glass">
             <div class="font-semibold flex items-center gap-2">
-                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
+                <svg style="width:18px;height:18px;" class="text-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
                 Inbox Zero
             </div>
-            <div class="text-gray-400 text-sm mt-1">Process batch of unread emails</div>
+            <div class="text-muted text-sm mt-1">Process batch of unread emails</div>
         </button>
-        <button onclick="getVipAlerts()" class="w-full bg-gray-800 hover:bg-gray-700 text-white rounded-xl p-4 text-left transition border border-gray-700">
+        <button onclick="getVipAlerts()" class="btn btn-glass">
             <div class="font-semibold flex items-center gap-2">
-                <svg class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+                <svg style="width:18px;height:18px;" class="text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
                 VIP Alerts
             </div>
-            <div class="text-gray-400 text-sm mt-1">Check for emails from VIP contacts</div>
+            <div class="text-muted text-sm mt-1">Check for emails from VIP contacts</div>
         </button>
         <div id="action-result" class="hidden mt-4"></div>
     </div>
@@ -157,13 +826,13 @@
     <!-- Emails Tab -->
     <div id="tab-emails" class="tab-content p-4">
         <div class="px-4 pt-2 pb-1">
-          <input id="emailSearch" type="search" placeholder="Search emails..." 
-            class="w-full bg-gray-800 text-white rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+          <input id="emailSearch" type="search" placeholder="Search emails..."
+            class="input"
             onkeydown="if(event.key==='Enter') searchEmails(this.value)">
         </div>
         <div class="flex items-center justify-between mb-3">
             <h2 class="text-lg font-semibold">Unread Emails</h2>
-            <button onclick="draftAllReplies()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold rounded-lg px-4 py-2 transition">
+            <button onclick="draftAllReplies()" class="btn btn-primary" style="padding:8px 16px; font-size:13px;">
                 Draft Replies
             </button>
         </div>
@@ -174,28 +843,28 @@
     <!-- Chat Tab -->
     <div id="tab-chat" class="tab-content flex flex-col" style="height: calc(100vh - 130px);">
         <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3">
-            <div class="chat-bubble bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 text-sm fade-in">
+            <div class="chat-bubble chat-bubble-assistant fade-in" style="max-width:85%;">
                 Hi! I'm MailTank, your email assistant. Ask me anything about your inbox — I can scan priorities, check VIP emails, clean up newsletters, and more.
             </div>
         </div>
-        <div class="p-3 border-t border-gray-700 bg-gray-900">
-            <div id="voice-indicator" class="hidden flex items-center gap-2 px-3 py-1.5 mb-2 text-xs text-red-300">
+        <div class="chat-input-area">
+            <div id="voice-indicator" class="hidden flex items-center gap-2 px-3 py-1 mb-2 text-xs text-danger">
                 <span class="red-dot"></span>
                 <span id="voice-status-text">Listening...</span>
             </div>
             <div id="voice-output-toggle" class="hidden flex items-center gap-2 px-3 py-1 mb-2">
-                <input type="checkbox" id="voice-output-cb" checked onchange="toggleVoiceOutput(this.checked)" class="accent-cyan-500">
-                <label for="voice-output-cb" class="text-xs text-gray-400 select-none">Read responses aloud</label>
+                <input type="checkbox" id="voice-output-cb" checked onchange="toggleVoiceOutput(this.checked)" class="accent-checkbox">
+                <label for="voice-output-cb" class="text-xs text-muted select-none">Read responses aloud</label>
             </div>
             <form id="chat-form" class="flex gap-2">
                 <input id="chat-input" type="text" placeholder="Ask MailTank..."
                     autocomplete="off"
-                    class="flex-1 bg-gray-800 text-white rounded-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500">
-                <button type="button" id="mic-btn" onclick="toggleVoice()" class="hidden bg-gray-700 hover:bg-gray-600 text-white rounded-full w-11 h-11 flex items-center justify-center transition flex-shrink-0" aria-label="Voice input">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 7v4m-4 0h8m-4-12a3 3 0 00-3 3v4a3 3 0 006 0V8a3 3 0 00-3-3z"/></svg>
+                    class="input input-chat">
+                <button type="button" id="mic-btn" onclick="toggleVoice()" class="btn btn-icon btn-cancel hidden" aria-label="Voice input">
+                    <svg style="width:18px;height:18px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 7v4m-4 0h8m-4-12a3 3 0 00-3 3v4a3 3 0 006 0V8a3 3 0 00-3-3z"/></svg>
                 </button>
-                <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white rounded-full w-11 h-11 flex items-center justify-center transition flex-shrink-0">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                <button type="submit" class="btn btn-icon" style="background:linear-gradient(135deg,#06b6d4,#0d9488);">
+                    <svg style="width:18px;height:18px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
                 </button>
             </form>
         </div>
@@ -205,64 +874,66 @@
     <div id="tab-agents" class="tab-content p-4 space-y-3">
         <div class="flex items-center justify-between mb-2">
             <h2 class="text-lg font-semibold">Agent Department</h2>
-            <div id="scheduler-status" class="text-xs text-gray-500"></div>
+            <div id="scheduler-status" class="text-xs text-dim"></div>
         </div>
         <div id="agents-list" class="space-y-2"></div>
         <div class="mt-4">
-            <h3 class="text-sm font-semibold text-gray-400 uppercase mb-2">Recent Activity</h3>
+            <h3 class="section-label mb-2">Recent Activity</h3>
             <div id="agents-logs" class="space-y-2"></div>
         </div>
         <div class="mt-4">
-            <h3 class="text-sm font-semibold text-gray-400 uppercase mb-2">Evolution History</h3>
+            <h3 class="section-label mb-2">Evolution History</h3>
             <div id="agents-audit" class="space-y-2"></div>
         </div>
     </div>
 
     <!-- Settings Tab -->
     <div id="tab-settings" class="tab-content p-4 space-y-4">
-        <div class="bg-gray-800 rounded-xl p-4">
-            <h3 class="font-semibold text-cyan-400 mb-3">VIP Domains</h3>
+        <div class="card">
+            <h3 class="font-semibold text-accent mb-3">VIP Domains</h3>
             <div id="domains-list" class="space-y-2 text-sm"></div>
-            <button onclick="loadDomains()" class="mt-3 text-cyan-400 text-sm hover:underline">Refresh</button>
+            <button onclick="loadDomains()" class="link-accent text-sm mt-3">Refresh</button>
         </div>
-        <button onclick="getDigest()" class="w-full bg-gray-800 hover:bg-gray-700 text-white rounded-xl p-4 text-left transition border border-gray-700">
+        <button onclick="getDigest()" class="btn btn-glass">
             <div class="font-semibold">Weekly Digest</div>
-            <div class="text-gray-400 text-sm mt-1">View email stats for the past 7 days</div>
+            <div class="text-muted text-sm mt-1">View email stats for the past 7 days</div>
         </button>
         <div id="digest-result" class="hidden"></div>
     </div>
 
     <!-- Bottom Navigation -->
-    <nav class="bottom-nav fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 flex z-50">
-        <button onclick="switchTab('dashboard')" class="nav-btn active flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="dashboard" aria-label="Home">
-            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+    <nav class="bottom-nav">
+        <button onclick="switchTab('dashboard')" class="nav-btn active" data-tab="dashboard" aria-label="Home">
+            <svg fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
             Home
         </button>
-        <button onclick="switchTab('priority')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="priority" aria-label="Priority">
-            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+        <button onclick="switchTab('priority')" class="nav-btn" data-tab="priority" aria-label="Priority">
+            <svg fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
             Priority
         </button>
-        <button onclick="switchTab('actions')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="actions" aria-label="Actions">
-            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <button onclick="switchTab('actions')" class="nav-btn" data-tab="actions" aria-label="Actions">
+            <svg fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             Actions
         </button>
-        <button onclick="switchTab('emails')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="emails" aria-label="Emails">
-            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        <button onclick="switchTab('emails')" class="nav-btn" data-tab="emails" aria-label="Emails">
+            <svg fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
             Emails
         </button>
-        <button onclick="switchTab('chat')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="chat" aria-label="Chat">
-            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        <button onclick="switchTab('chat')" class="nav-btn" data-tab="chat" aria-label="Chat">
+            <svg fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
             Chat
         </button>
-        <button onclick="switchTab('agents')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="agents" aria-label="Agents">
-            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+        <button onclick="switchTab('agents')" class="nav-btn" data-tab="agents" aria-label="Agents">
+            <svg fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
             Agents
         </button>
-        <button onclick="switchTab('settings')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="settings" aria-label="Settings">
-            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <button onclick="switchTab('settings')" class="nav-btn" data-tab="settings" aria-label="Settings">
+            <svg fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             Settings
         </button>
     </nav>
+
+    </div><!-- /app-content -->
 
     <script>window.CSRF_TOKEN = "{{ csrf_token }}";</script>
     <script src="/static/app.js"></script>

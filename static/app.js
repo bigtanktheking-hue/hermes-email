@@ -50,7 +50,7 @@ function showResult(el, html) {
 }
 
 function showError(el, msg) {
-    el.innerHTML = '<div class="bg-red-900 text-red-200 text-sm rounded-xl p-4 fade-in">' + esc(msg) + '</div>';
+    el.innerHTML = '<div class="error-card fade-in">' + esc(msg) + '</div>';
     el.classList.remove('hidden');
 }
 
@@ -58,8 +58,7 @@ function showError(el, msg) {
 function showToast(msg, type) {
     type = type || 'error';
     var t = document.createElement('div');
-    t.className = 'fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm z-50 fade-in ' + 
-        (type === 'error' ? 'bg-red-600' : 'bg-green-600') + ' text-white shadow-lg';
+    t.className = 'toast fade-in ' + (type === 'error' ? 'toast-error' : 'toast-success');
     t.textContent = msg;
     document.body.appendChild(t);
     setTimeout(function() { t.remove(); }, 4000);
@@ -113,7 +112,7 @@ async function loadHomeEmails(retries) {
     try {
         const data = await api('/api/emails?per_page=20');
         if (!data.emails || data.emails.length === 0) {
-            el.innerHTML = '<div class="text-center text-gray-500 py-4 text-sm">No unread emails</div>';
+            el.innerHTML = '<div class="text-center text-muted py-4 text-sm">No unread emails</div>';
             return;
         }
         el.innerHTML = renderEmailCards(data.emails, true);
@@ -121,7 +120,7 @@ async function loadHomeEmails(retries) {
         if (retries < 2) {
             setTimeout(function() { loadHomeEmails(retries + 1); }, 2000);
         } else {
-            el.innerHTML = '<div class="text-red-400 text-sm p-2">' + esc(e.message) + ' <button onclick="loadHomeEmails()" class="text-cyan-400 underline ml-2">Retry</button></div>';
+            el.innerHTML = '<div class="text-danger text-sm p-2">' + esc(e.message) + ' <button onclick="loadHomeEmails()" class="link-accent ml-2">Retry</button></div>';
         }
     }
 }
@@ -143,17 +142,17 @@ function renderEmailCards(emails, withReplyBtn) {
             }
         } catch(ex) { shortDate = ''; }
 
-        html += '<div class="bg-gray-800 rounded-xl p-3 fade-in cursor-pointer hover:bg-gray-750 transition" onclick="openEmail(\'' + esc(e.id) + '\')">';
+        html += '<div class="card card-sm card-interactive fade-in" onclick="openEmail(\'' + esc(e.id) + '\')">';
         html += '<div class="flex items-start justify-between gap-2">';
         html += '<div class="flex-1 min-w-0">';
         html += '<div class="font-semibold text-sm truncate">' + from + '</div>';
-        html += '<div class="text-sm text-gray-200 truncate">' + subj + '</div>';
-        html += '<div class="text-xs text-gray-500 truncate mt-1">' + snippet + '</div>';
+        html += '<div class="text-sm text-secondary truncate">' + subj + '</div>';
+        html += '<div class="text-xs text-muted truncate mt-1">' + snippet + '</div>';
         html += '</div>';
         html += '<div class="text-right flex-shrink-0">';
-        html += '<div class="text-xs text-gray-500 whitespace-nowrap">' + shortDate + '</div>';
+        html += '<div class="text-xs text-muted whitespace-nowrap">' + shortDate + '</div>';
         if (withReplyBtn) {
-            html += '<button onclick="event.stopPropagation(); draftReply(\'' + esc(e.id) + '\', this)" class="mt-2 bg-cyan-700 hover:bg-cyan-600 text-white text-xs rounded-lg px-2 py-1 transition">Reply</button>';
+            html += '<button onclick="event.stopPropagation(); draftReply(\'' + esc(e.id) + '\', this)" class="btn btn-reply mt-2">Reply</button>';
         }
         html += '</div></div>';
         html += '<div id="draft-' + e.id + '" class="hidden mt-2" onclick="event.stopPropagation()"></div>';
@@ -239,7 +238,7 @@ async function sendReplyModal() {
     if (!confirm('Send this reply?')) return;
 
     const status = document.getElementById('modal-send-status');
-    status.innerHTML = '<div class="flex items-center gap-2 text-cyan-400 text-sm"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div> Sending...</div>';
+    status.innerHTML = '<div class="flex items-center gap-2 text-accent text-sm"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div> Sending...</div>';
     status.classList.remove('hidden');
 
     try {
@@ -247,12 +246,12 @@ async function sendReplyModal() {
             method: 'POST',
             body: JSON.stringify({ email_id: currentEmailId, body: body }),
         });
-        status.innerHTML = '<div class="text-green-400 text-sm font-semibold fade-in">Sent to ' + esc(data.to) + '</div>';
+        status.innerHTML = '<div class="text-success text-sm font-semibold fade-in">Sent to ' + esc(data.to) + '</div>';
         document.getElementById('modal-reply-text').value = '';
         // Refresh home emails
         setTimeout(function() { loadHomeEmails(); loadStats(); }, 1000);
     } catch (e) {
-        status.innerHTML = '<div class="text-red-400 text-sm">' + esc(e.message) + '</div>';
+        status.innerHTML = '<div class="text-danger text-sm">' + esc(e.message) + '</div>';
     }
 }
 
@@ -265,27 +264,27 @@ async function draftAllRepliesHome() {
             body: JSON.stringify({ count: 20 }),
         });
         if (!data.drafts || data.drafts.length === 0) {
-            showResult(el, '<div class="bg-gray-800 rounded-xl p-4 text-center text-gray-400">No emails to process</div>');
+            showResult(el, '<div class="card text-center text-muted">No emails to process</div>');
             return;
         }
         let html = '<div class="space-y-3">';
-        html += '<div class="text-cyan-400 font-semibold text-sm">' + data.needs_reply + ' of ' + data.count + ' emails need replies</div>';
+        html += '<div class="text-accent font-semibold text-sm">' + data.needs_reply + ' of ' + data.count + ' emails need replies</div>';
         data.drafts.forEach(function(d, idx) {
-            html += '<div class="bg-gray-800 rounded-xl p-3 fade-in" id="batch-draft-' + idx + '">';
+            html += '<div class="card card-sm fade-in" id="batch-draft-' + idx + '">';
             html += '<div class="flex items-center gap-2 mb-1 cursor-pointer" onclick="openEmail(\'' + esc(d.id) + '\')">';
-            html += '<span class="w-2 h-2 rounded-full flex-shrink-0 ' + (d.needs_reply ? 'bg-cyan-400' : 'bg-gray-600') + '"></span>';
+            html += '<span class="dot ' + (d.needs_reply ? 'dot-accent' : 'dot-muted') + '"></span>';
             html += '<div class="font-semibold text-sm truncate flex-1">' + esc(d.subject) + '</div>';
             html += '</div>';
-            html += '<div class="text-xs text-gray-400 mb-1">' + esc(d.from) + '</div>';
+            html += '<div class="text-xs text-muted mb-1">' + esc(d.from) + '</div>';
             if (d.needs_reply && d.draft) {
-                html += '<textarea id="batch-text-' + idx + '" rows="3" class="w-full bg-gray-700 text-gray-200 text-sm rounded-lg p-2 mt-2 focus:outline-none focus:ring-1 focus:ring-cyan-500">' + esc(d.draft) + '</textarea>';
+                html += '<textarea id="batch-text-' + idx + '" rows="3" class="input text-sm mt-2">' + esc(d.draft) + '</textarea>';
                 html += '<div class="flex gap-2 mt-2">';
-                html += '<button onclick="approveSend(\'' + esc(d.id) + '\', ' + idx + ')" class="flex-1 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold rounded-lg py-2 transition">Approve & Send</button>';
-                html += '<button onclick="skipDraft(' + idx + ')" class="bg-gray-600 hover:bg-gray-500 text-white text-xs rounded-lg px-3 py-2 transition">Skip</button>';
+                html += '<button onclick="approveSend(\'' + esc(d.id) + '\', ' + idx + ')" class="btn btn-send flex-1 text-xs" style="padding:8px 12px;">Approve & Send</button>';
+                html += '<button onclick="skipDraft(' + idx + ')" class="btn btn-cancel text-xs" style="padding:8px 12px;">Skip</button>';
                 html += '</div>';
                 html += '<div id="batch-status-' + idx + '" class="hidden mt-1"></div>';
             } else {
-                html += '<div class="text-xs text-gray-500 italic">No reply needed</div>';
+                html += '<div class="text-xs text-muted italic">No reply needed</div>';
             }
             html += '</div>';
         });
@@ -302,7 +301,7 @@ async function approveSend(emailId, idx) {
     if (!body) { showToast('Reply is empty'); return; }
 
     const status = document.getElementById('batch-status-' + idx);
-    status.innerHTML = '<div class="flex items-center gap-2 text-cyan-400 text-xs"><div class="spinner" style="width:12px;height:12px;border-width:2px;"></div> Sending...</div>';
+    status.innerHTML = '<div class="flex items-center gap-2 text-accent text-xs"><div class="spinner" style="width:12px;height:12px;border-width:2px;"></div> Sending...</div>';
     status.classList.remove('hidden');
 
     try {
@@ -311,15 +310,15 @@ async function approveSend(emailId, idx) {
             body: JSON.stringify({ email_id: emailId, body: body }),
         });
         const card = document.getElementById('batch-draft-' + idx);
-        card.innerHTML = '<div class="flex items-center gap-2 text-green-400 text-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Sent to ' + esc(data.to) + '</div>';
+        card.innerHTML = '<div class="flex items-center gap-2 text-success text-sm"><svg style="width:16px;height:16px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Sent to ' + esc(data.to) + '</div>';
     } catch (e) {
-        status.innerHTML = '<div class="text-red-400 text-xs">' + esc(e.message) + '</div>';
+        status.innerHTML = '<div class="text-danger text-xs">' + esc(e.message) + '</div>';
     }
 }
 
 function skipDraft(idx) {
     const card = document.getElementById('batch-draft-' + idx);
-    if (card) card.innerHTML = '<div class="text-gray-500 text-xs italic">Skipped</div>';
+    if (card) card.innerHTML = '<div class="text-muted text-xs italic">Skipped</div>';
 }
 
 // ── Search emails from a sender ───────────────────────────
@@ -334,10 +333,10 @@ async function searchEmailsFrom(sender) {
     try {
         const data = await api('/api/emails?per_page=30&q=' + encodeURIComponent('from:' + addr + ' is:unread in:inbox'));
         if (!data.emails || !data.emails.length) {
-            el.innerHTML = '<div class="text-center text-gray-400 py-8">No unread emails from ' + esc(addr) + '</div>';
+            el.innerHTML = '<div class="text-center text-muted py-8">No unread emails from ' + esc(addr) + '</div>';
             return;
         }
-        el.innerHTML = '<div class="text-cyan-400 text-sm mb-2">Emails from ' + esc(addr) + '</div>' + renderEmailCards(data.emails, true);
+        el.innerHTML = '<div class="text-accent text-sm mb-2">Emails from ' + esc(addr) + '</div>' + renderEmailCards(data.emails, true);
     } catch (e) {
         showError(el, e.message);
     }
@@ -367,21 +366,21 @@ async function loadPanel(id) {
         if (id === 'panel-unread') {
             const data = await api('/api/emails?per_page=30');
             if (!data.emails || !data.emails.length) {
-                el.innerHTML = '<div class="bg-gray-800 rounded-xl p-4 text-gray-400 text-sm text-center">No unread emails</div>';
+                el.innerHTML = '<div class="card text-muted text-sm text-center">No unread emails</div>';
             } else {
                 el.innerHTML = '<div class="space-y-2">' + renderEmailCards(data.emails, true) + '</div>';
             }
         } else if (id === 'panel-vip-emails') {
             const data = await api('/api/vip');
             if (!data.emails || !data.emails.length) {
-                el.innerHTML = '<div class="bg-gray-800 rounded-xl p-4 text-gray-400 text-sm text-center">No unread VIP emails</div>';
+                el.innerHTML = '<div class="card text-muted text-sm text-center">No unread VIP emails</div>';
             } else {
                 let html = '<div class="space-y-2">';
                 data.emails.forEach(function(e) {
-                    html += '<div class="bg-gray-800 rounded-xl p-3 border-l-4 border-yellow-500 fade-in">';
+                    html += '<div class="card card-sm accent-yellow fade-in">';
                     html += '<div class="font-semibold text-sm truncate">' + esc(e.from) + '</div>';
-                    html += '<div class="text-sm text-gray-200 truncate">' + esc(e.subject) + '</div>';
-                    html += '<div class="text-xs text-gray-500 truncate mt-1">' + esc(e.snippet || '') + '</div>';
+                    html += '<div class="text-sm text-secondary truncate">' + esc(e.subject) + '</div>';
+                    html += '<div class="text-xs text-muted truncate mt-1">' + esc(e.snippet || '') + '</div>';
                     html += '</div>';
                 });
                 html += '</div>';
@@ -390,14 +389,14 @@ async function loadPanel(id) {
         } else if (id === 'panel-vip-contacts') {
             const data = await api('/api/vip/contacts');
             if (!data.contacts || !data.contacts.length) {
-                el.innerHTML = '<div class="bg-gray-800 rounded-xl p-4 text-gray-400 text-sm text-center">No VIP contacts detected</div>';
+                el.innerHTML = '<div class="card text-muted text-sm text-center">No VIP contacts detected</div>';
             } else {
-                let html = '<div class="bg-gray-800 rounded-xl p-4 space-y-1">';
-                html += '<div class="text-green-400 text-xs font-semibold uppercase mb-2">' + data.count + ' VIP Contacts (auto-detected)</div>';
+                let html = '<div class="card space-y-1">';
+                html += '<div class="text-success text-xs font-semibold uppercase mb-2">' + data.count + ' VIP Contacts (auto-detected)</div>';
                 data.contacts.forEach(function(c) {
-                    html += '<div class="flex items-center justify-between py-1 text-sm border-b border-gray-700">';
-                    html += '<span class="text-gray-200">' + esc(c.email) + '</span>';
-                    html += '<span class="text-green-500 text-xs">score: ' + c.score + '</span>';
+                    html += '<div class="flex items-center justify-between py-1 text-sm border-b">';
+                    html += '<span class="text-secondary">' + esc(c.email) + '</span>';
+                    html += '<span class="text-success text-xs">score: ' + c.score + '</span>';
                     html += '</div>';
                 });
                 html += '</div>';
@@ -412,13 +411,13 @@ async function loadPanel(id) {
             let html = '';
             // Show people first
             if (pplData.people && pplData.people.length) {
-                html += '<div class="bg-gray-800 rounded-xl p-4 mb-3">';
-                html += '<div class="text-yellow-400 text-xs font-semibold uppercase mb-2">' + pplData.people.length + ' People from VIP Domains (' + pplData.total + ' emails)</div>';
+                html += '<div class="card mb-3">';
+                html += '<div class="text-yellow text-xs font-semibold uppercase mb-2">' + pplData.people.length + ' People from VIP Domains (' + pplData.total + ' emails)</div>';
                 pplData.people.forEach(function(p) {
                     const sender = esc(p.from || '');
-                    html += '<div class="py-2 border-b border-gray-700 cursor-pointer hover:bg-gray-750" onclick="searchEmailsFrom(\'' + sender.replace(/'/g, "\\'") + '\')">';
-                    html += '<div class="text-sm text-gray-200">' + sender + '</div>';
-                    html += '<div class="flex items-center gap-2 text-xs text-gray-500 mt-0.5">';
+                    html += '<div class="py-2 border-b card-interactive" onclick="searchEmailsFrom(\'' + sender.replace(/'/g, "\\'") + '\')">';
+                    html += '<div class="text-sm text-secondary">' + sender + '</div>';
+                    html += '<div class="flex items-center gap-2 text-xs text-muted mt-1">';
                     html += '<span>' + p.count + ' unread</span>';
                     html += '<span class="truncate">' + esc(p.latest_subject) + '</span>';
                     html += '</div></div>';
@@ -427,18 +426,18 @@ async function loadPanel(id) {
             }
             // Then show domain list
             if (domData.domains && domData.domains.length) {
-                html += '<div class="bg-gray-800 rounded-xl p-4 space-y-1">';
-                html += '<div class="text-purple-400 text-xs font-semibold uppercase mb-2">' + domData.count + ' VIP Domains</div>';
+                html += '<div class="card space-y-1">';
+                html += '<div class="text-purple text-xs font-semibold uppercase mb-2">' + domData.count + ' VIP Domains</div>';
                 domData.domains.forEach(function(d) {
-                    html += '<div class="flex items-center justify-between py-1 text-sm border-b border-gray-700">';
-                    html += '<span class="text-cyan-400">@' + esc(d.domain) + '</span>';
-                    html += '<span class="text-gray-400 text-xs">' + esc(d.company || '') + '</span>';
+                    html += '<div class="flex items-center justify-between py-1 text-sm border-b">';
+                    html += '<span class="text-accent">@' + esc(d.domain) + '</span>';
+                    html += '<span class="text-muted text-xs">' + esc(d.company || '') + '</span>';
                     html += '</div>';
                 });
                 html += '</div>';
             }
             if (!html) {
-                el.innerHTML = '<div class="bg-gray-800 rounded-xl p-4 text-gray-400 text-sm text-center">No VIP domains</div>';
+                el.innerHTML = '<div class="card text-muted text-sm text-center">No VIP domains</div>';
             } else {
                 showResult(el, html);
             }
@@ -454,21 +453,21 @@ async function getBriefing() {
     showLoading(el);
     try {
         const data = await api('/api/briefing');
-        let html = '<div class="bg-gray-800 rounded-xl p-4 space-y-3">';
-        html += '<div class="text-cyan-400 font-semibold">' + esc(data.email_count || 0) + ' emails analyzed</div>';
+        let html = '<div class="card space-y-3">';
+        html += '<div class="text-accent font-semibold">' + esc(data.email_count || 0) + ' emails analyzed</div>';
         html += '<p class="text-sm">' + esc(data.summary || 'No summary available.') + '</p>';
 
         if (data.action_items && data.action_items.length) {
-            html += '<div class="mt-2"><div class="text-red-400 text-xs font-semibold uppercase mb-1">Action Items</div>';
+            html += '<div class="mt-2"><div class="text-danger text-xs font-semibold uppercase mb-1">Action Items</div>';
             data.action_items.forEach(function(item) {
-                html += '<div class="text-sm text-gray-300 pl-2 border-l-2 border-red-500 mb-1">' + esc(item) + '</div>';
+                html += '<div class="text-sm text-secondary pl-2 border-l-2 mb-1" style="border-color:var(--danger);">' + esc(item) + '</div>';
             });
             html += '</div>';
         }
         if (data.fyi && data.fyi.length) {
-            html += '<div class="mt-2"><div class="text-blue-400 text-xs font-semibold uppercase mb-1">FYI</div>';
+            html += '<div class="mt-2"><div class="text-blue text-xs font-semibold uppercase mb-1">FYI</div>';
             data.fyi.forEach(function(item) {
-                html += '<div class="text-sm text-gray-300 pl-2 border-l-2 border-blue-500 mb-1">' + esc(item) + '</div>';
+                html += '<div class="text-sm text-secondary pl-2 border-l-2 mb-1" style="border-color:var(--blue);">' + esc(item) + '</div>';
             });
             html += '</div>';
         }
@@ -487,19 +486,19 @@ async function getPriority() {
     try {
         const data = await api('/api/priority');
         if (!data.classifications || data.classifications.length === 0) {
-            showResult(el, '<div class="bg-gray-800 rounded-xl p-4 text-center text-gray-400">No unread emails to classify</div>');
+            showResult(el, '<div class="card text-center text-muted">No unread emails to classify</div>');
             return;
         }
-        let html = '<div class="text-sm text-gray-400 mb-2">' + data.email_count + ' emails scanned</div>';
+        let html = '<div class="text-sm text-muted mb-2">' + data.email_count + ' emails scanned</div>';
         data.classifications.forEach(function(c) {
             const p = c.priority || 'low';
-            html += '<div class="bg-gray-800 rounded-xl p-3 mb-2 priority-' + p + ' fade-in">';
+            html += '<div class="card card-sm mb-2 priority-' + p + ' fade-in">';
             html += '<div class="font-semibold text-sm">' + esc(c.subject || '(no subject)') + '</div>';
-            html += '<div class="text-gray-400 text-xs mt-1">' + esc(c.from || '') + '</div>';
+            html += '<div class="text-muted text-xs mt-1">' + esc(c.from || '') + '</div>';
             html += '<div class="flex items-center gap-2 mt-1">';
-            const colors = { high: 'text-red-400', medium: 'text-yellow-400', low: 'text-gray-500' };
-            html += '<span class="text-xs font-semibold uppercase ' + (colors[p] || 'text-gray-500') + '">' + p + '</span>';
-            html += '<span class="text-xs text-gray-500">' + esc(c.reason || '') + '</span>';
+            const colors = { high: 'text-danger', medium: 'text-warning', low: 'text-muted' };
+            html += '<span class="text-xs font-semibold uppercase ' + (colors[p] || 'text-muted') + '">' + p + '</span>';
+            html += '<span class="text-xs text-muted">' + esc(c.reason || '') + '</span>';
             html += '</div></div>';
         });
         showResult(el, html);
@@ -516,12 +515,12 @@ async function runCleanup() {
     showLoading(el);
     try {
         const data = await api('/api/cleanup', { method: 'POST' });
-        showResult(el, '<div class="bg-gray-800 rounded-xl p-4 text-sm space-y-1">' +
-            '<div class="text-cyan-400 font-semibold">Cleanup Complete</div>' +
+        showResult(el, '<div class="card text-sm space-y-1">' +
+            '<div class="text-accent font-semibold">Cleanup Complete</div>' +
             '<div>' + data.email_count + ' emails scanned</div>' +
-            '<div class="text-green-400">' + data.archived + ' archived</div>' +
-            '<div class="text-red-400">' + data.deleted + ' deleted</div>' +
-            '<div class="text-gray-400">' + data.kept + ' kept</div>' +
+            '<div class="text-success">' + data.archived + ' archived</div>' +
+            '<div class="text-danger">' + data.deleted + ' deleted</div>' +
+            '<div class="text-muted">' + data.kept + ' kept</div>' +
             '</div>');
         loadStats();
     } catch (e) {
@@ -536,13 +535,13 @@ async function runInboxZero() {
     try {
         const data = await api('/api/inbox-zero', { method: 'POST' });
         let msg = data.inbox_zero ? 'Inbox zero achieved!' : data.unread_remaining + ' unread remaining';
-        showResult(el, '<div class="bg-gray-800 rounded-xl p-4 text-sm space-y-1">' +
-            '<div class="text-cyan-400 font-semibold">Inbox Zero</div>' +
+        showResult(el, '<div class="card text-sm space-y-1">' +
+            '<div class="text-accent font-semibold">Inbox Zero</div>' +
             '<div>' + data.email_count + ' emails processed</div>' +
-            '<div class="text-green-400">' + data.archived + ' archived</div>' +
-            '<div class="text-red-400">' + data.trashed + ' trashed</div>' +
-            '<div class="text-blue-400">' + data.kept_for_action + ' kept for action</div>' +
-            '<div class="text-gray-400 mt-1">' + esc(msg) + '</div>' +
+            '<div class="text-success">' + data.archived + ' archived</div>' +
+            '<div class="text-danger">' + data.trashed + ' trashed</div>' +
+            '<div class="text-blue">' + data.kept_for_action + ' kept for action</div>' +
+            '<div class="text-muted mt-1">' + esc(msg) + '</div>' +
             '</div>');
         loadStats();
     } catch (e) {
@@ -556,14 +555,14 @@ async function getVipAlerts() {
     try {
         const data = await api('/api/vip');
         if (data.email_count === 0) {
-            showResult(el, '<div class="bg-gray-800 rounded-xl p-4 text-center text-gray-400">No unread VIP emails</div>');
+            showResult(el, '<div class="card text-center text-muted">No unread VIP emails</div>');
             return;
         }
-        let html = '<div class="bg-gray-800 rounded-xl p-4"><div class="text-yellow-400 font-semibold mb-2">' + data.email_count + ' VIP emails</div>';
+        let html = '<div class="card"><div class="text-warning font-semibold mb-2">' + data.email_count + ' VIP emails</div>';
         data.emails.forEach(function(e) {
-            html += '<div class="border-l-2 border-yellow-500 pl-3 py-1 mb-2">';
-            html += '<div class="text-sm font-medium">' + esc(e.subject) + '</div>';
-            html += '<div class="text-xs text-gray-400">' + esc(e.from) + '</div>';
+            html += '<div class="border-l-2 pl-3 py-1 mb-2" style="border-color:var(--warning);">';
+            html += '<div class="text-sm font-semibold">' + esc(e.subject) + '</div>';
+            html += '<div class="text-xs text-muted">' + esc(e.from) + '</div>';
             html += '</div>';
         });
         html += '</div>';
@@ -598,8 +597,8 @@ function addChatBubble(role, text, scroll) {
     div.className = 'flex ' + (role === 'user' ? 'justify-end' : 'justify-start');
 
     const bubble = document.createElement('div');
-    bubble.className = 'chat-bubble rounded-2xl px-4 py-3 text-sm fade-in ' +
-        (role === 'user' ? 'bg-cyan-700 rounded-tr-sm' : 'bg-gray-800 rounded-tl-sm');
+    bubble.className = 'chat-bubble fade-in ' +
+        (role === 'user' ? 'chat-bubble-user' : 'chat-bubble-assistant');
     bubble.textContent = text;
 
     div.appendChild(bubble);
@@ -612,7 +611,7 @@ function addTypingIndicator() {
     const div = document.createElement('div');
     div.id = 'typing';
     div.className = 'flex justify-start';
-    div.innerHTML = '<div class="chat-bubble bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3"><div class="spinner" style="width:18px;height:18px;border-width:2px;"></div></div>';
+    div.innerHTML = '<div class="chat-bubble chat-bubble-assistant"><div class="spinner" style="width:18px;height:18px;border-width:2px;"></div></div>';
     el.appendChild(div);
     el.scrollTop = el.scrollHeight;
 }
@@ -657,7 +656,7 @@ async function loadEmails() {
     try {
         const data = await api('/api/emails?per_page=20');
         if (!data.emails || data.emails.length === 0) {
-            el.innerHTML = '<div class="text-center text-gray-400 py-8">No unread emails</div>';
+            el.innerHTML = '<div class="text-center text-muted py-8">No unread emails</div>';
             return;
         }
         let html = '';
@@ -673,23 +672,23 @@ async function loadEmails() {
                 shortDate = d.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + d.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
             } catch(ex) { shortDate = date; }
 
-            html += '<div class="bg-gray-800 rounded-xl p-3 fade-in" data-id="' + esc(e.id) + '">';
+            html += '<div class="card card-sm fade-in" data-id="' + esc(e.id) + '">';
             html += '<div class="flex items-start justify-between gap-2">';
             html += '<div class="flex-1 min-w-0">';
             html += '<div class="font-semibold text-sm truncate">' + from + '</div>';
-            html += '<div class="text-sm text-gray-200 truncate">' + subj + '</div>';
-            html += '<div class="text-xs text-gray-500 truncate mt-1">' + snippet + '</div>';
+            html += '<div class="text-sm text-secondary truncate">' + subj + '</div>';
+            html += '<div class="text-xs text-muted truncate mt-1">' + snippet + '</div>';
             html += '</div>';
             html += '<div class="text-right flex-shrink-0">';
-            html += '<div class="text-xs text-gray-500 whitespace-nowrap">' + shortDate + '</div>';
-            html += '<button onclick="draftReply(\'' + esc(e.id) + '\', this)" class="mt-2 bg-cyan-700 hover:bg-cyan-600 text-white text-xs rounded-lg px-2 py-1 transition">Reply</button>';
+            html += '<div class="text-xs text-muted whitespace-nowrap">' + shortDate + '</div>';
+            html += '<button onclick="draftReply(\'' + esc(e.id) + '\', this)" class="btn btn-reply mt-2">Reply</button>';
             html += '</div></div>';
             html += '<div id="draft-' + e.id + '" class="hidden mt-2"></div>';
             html += '</div>';
         });
         el.innerHTML = html;
     } catch (e) {
-        el.innerHTML = '<div class="bg-red-900 text-red-200 text-sm rounded-xl p-4">' + esc(e.message) + '</div>';
+        el.innerHTML = '<div class="error-card">' + esc(e.message) + '</div>';
     }
 }
 
@@ -698,7 +697,7 @@ async function draftReply(emailId, btn) {
     if (!el) return;
     btn.disabled = true;
     btn.textContent = '...';
-    el.innerHTML = '<div class="flex items-center gap-2 text-xs text-gray-400"><div class="spinner" style="width:14px;height:14px;border-width:2px;"></div> Drafting reply...</div>';
+    el.innerHTML = '<div class="flex items-center gap-2 text-xs text-muted"><div class="spinner" style="width:14px;height:14px;border-width:2px;"></div> Drafting reply...</div>';
     el.classList.remove('hidden');
     try {
         const data = await api('/api/draft-reply', {
@@ -706,16 +705,16 @@ async function draftReply(emailId, btn) {
             body: JSON.stringify({ email_id: emailId }),
         });
         if (data.needs_reply && data.draft) {
-            el.innerHTML = '<div class="bg-gray-700 rounded-lg p-3 text-sm fade-in">' +
-                '<div class="text-cyan-400 text-xs font-semibold mb-1">DRAFT REPLY</div>' +
-                '<div class="text-gray-200 whitespace-pre-wrap">' + esc(data.draft) + '</div>' +
+            el.innerHTML = '<div class="card card-sm text-sm fade-in">' +
+                '<div class="text-accent text-xs font-semibold mb-1">DRAFT REPLY</div>' +
+                '<div class="text-secondary whitespace-pre-wrap">' + esc(data.draft) + '</div>' +
                 '</div>';
         } else {
-            el.innerHTML = '<div class="text-xs text-gray-500 italic fade-in">No reply needed</div>';
+            el.innerHTML = '<div class="text-xs text-muted italic fade-in">No reply needed</div>';
         }
         btn.textContent = 'Done';
     } catch (e) {
-        el.innerHTML = '<div class="text-xs text-red-400 fade-in">' + esc(e.message) + '</div>';
+        el.innerHTML = '<div class="text-xs text-danger fade-in">' + esc(e.message) + '</div>';
         btn.textContent = 'Retry';
         btn.disabled = false;
     }
@@ -730,29 +729,29 @@ async function draftAllReplies() {
             body: JSON.stringify({ count: 10 }),
         });
         if (!data.drafts || data.drafts.length === 0) {
-            showResult(el, '<div class="bg-gray-800 rounded-xl p-4 text-center text-gray-400">No emails to process</div>');
+            showResult(el, '<div class="card text-center text-muted">No emails to process</div>');
             return;
         }
         let html = '<div class="space-y-3">';
-        html += '<div class="text-cyan-400 font-semibold">' + data.needs_reply + ' of ' + data.count + ' emails need replies</div>';
+        html += '<div class="text-accent font-semibold">' + data.needs_reply + ' of ' + data.count + ' emails need replies</div>';
         data.drafts.forEach(function(d) {
-            html += '<div class="bg-gray-800 rounded-xl p-3 fade-in">';
+            html += '<div class="card card-sm fade-in">';
             html += '<div class="flex items-center gap-2 mb-1">';
             if (d.needs_reply) {
-                html += '<span class="w-2 h-2 bg-cyan-400 rounded-full flex-shrink-0"></span>';
+                html += '<span class="dot dot-accent"></span>';
             } else {
-                html += '<span class="w-2 h-2 bg-gray-600 rounded-full flex-shrink-0"></span>';
+                html += '<span class="dot dot-muted"></span>';
             }
             html += '<div class="font-semibold text-sm truncate">' + esc(d.subject) + '</div>';
             html += '</div>';
-            html += '<div class="text-xs text-gray-400 mb-1">' + esc(d.from) + '</div>';
+            html += '<div class="text-xs text-muted mb-1">' + esc(d.from) + '</div>';
             if (d.needs_reply && d.draft) {
-                html += '<div class="bg-gray-700 rounded-lg p-3 text-sm mt-2">';
-                html += '<div class="text-cyan-400 text-xs font-semibold mb-1">DRAFT REPLY</div>';
-                html += '<div class="text-gray-200 whitespace-pre-wrap">' + esc(d.draft) + '</div>';
+                html += '<div class="card card-sm text-sm mt-2">';
+                html += '<div class="text-accent text-xs font-semibold mb-1">DRAFT REPLY</div>';
+                html += '<div class="text-secondary whitespace-pre-wrap">' + esc(d.draft) + '</div>';
                 html += '</div>';
             } else {
-                html += '<div class="text-xs text-gray-500 italic">No reply needed</div>';
+                html += '<div class="text-xs text-muted italic">No reply needed</div>';
             }
             html += '</div>';
         });
@@ -770,20 +769,20 @@ async function loadDomains() {
     try {
         const data = await api('/api/domains');
         if (!data.domains || data.domains.length === 0) {
-            el.innerHTML = '<div class="text-gray-500">No VIP domains configured.</div>';
+            el.innerHTML = '<div class="text-muted">No VIP domains configured.</div>';
             return;
         }
         let html = '';
         data.domains.forEach(function(d) {
             html += '<div class="flex items-center justify-between py-1">';
-            html += '<div><span class="text-cyan-400">@' + esc(d.domain) + '</span>';
-            html += '<span class="text-gray-500 ml-2 text-xs">' + esc(d.company || '') + '</span></div>';
-            html += '<span class="text-xs text-gray-600">' + esc(d.category || '') + '</span>';
+            html += '<div><span class="text-accent">@' + esc(d.domain) + '</span>';
+            html += '<span class="text-muted ml-2 text-xs">' + esc(d.company || '') + '</span></div>';
+            html += '<span class="text-xs text-dim">' + esc(d.category || '') + '</span>';
             html += '</div>';
         });
         el.innerHTML = html;
     } catch (e) {
-        el.innerHTML = '<div class="text-red-400 text-sm">' + esc(e.message) + '</div>';
+        el.innerHTML = '<div class="text-danger text-sm">' + esc(e.message) + '</div>';
     }
 }
 
@@ -792,19 +791,19 @@ async function getDigest() {
     showLoading(el);
     try {
         const data = await api('/api/digest');
-        let html = '<div class="bg-gray-800 rounded-xl p-4 space-y-2 mt-2">';
-        html += '<div class="text-cyan-400 font-semibold">Weekly Digest</div>';
+        let html = '<div class="card space-y-2 mt-2">';
+        html += '<div class="text-accent font-semibold">Weekly Digest</div>';
         html += '<div class="grid grid-cols-2 gap-2 text-sm">';
-        html += '<div>Received: <span class="text-white font-semibold">' + data.received + '</span></div>';
-        html += '<div>Sent: <span class="text-white font-semibold">' + data.sent + '</span></div>';
-        html += '<div>Busiest: <span class="text-white font-semibold">' + esc(data.busiest_day) + '</span></div>';
-        html += '<div>Unread: <span class="text-white font-semibold">' + data.unread_count + '</span></div>';
+        html += '<div>Received: <span class="font-semibold">' + data.received + '</span></div>';
+        html += '<div>Sent: <span class="font-semibold">' + data.sent + '</span></div>';
+        html += '<div>Busiest: <span class="font-semibold">' + esc(data.busiest_day) + '</span></div>';
+        html += '<div>Unread: <span class="font-semibold">' + data.unread_count + '</span></div>';
         html += '</div>';
         if (data.top_senders && data.top_senders.length) {
-            html += '<div class="text-xs text-gray-400 mt-1">Top senders: ' + data.top_senders.map(esc).join(', ') + '</div>';
+            html += '<div class="text-xs text-muted mt-1">Top senders: ' + data.top_senders.map(esc).join(', ') + '</div>';
         }
         if (data.narrative) {
-            html += '<div class="text-sm text-gray-300 mt-2 italic">' + esc(data.narrative) + '</div>';
+            html += '<div class="text-sm text-secondary mt-2 italic">' + esc(data.narrative) + '</div>';
         }
         html += '</div>';
         showResult(el, html);
@@ -816,7 +815,7 @@ async function getDigest() {
 
 function renderEmailList(container, emails) {
     if (!emails || emails.length === 0) {
-        container.innerHTML = '<div class="text-center text-gray-400 py-8">No emails found</div>';
+        container.innerHTML = '<div class="text-center text-muted py-8">No emails found</div>';
         return;
     }
     var html = '';
@@ -830,16 +829,16 @@ function renderEmailList(container, emails) {
             shortDate = d.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + d.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
         } catch(ex) { shortDate = ''; }
 
-        html += '<div class="bg-gray-800 rounded-xl p-3 fade-in cursor-pointer hover:bg-gray-750 transition" onclick="openEmail(\'' + esc(e.id) + '\')">';
+        html += '<div class="card card-sm card-interactive fade-in" onclick="openEmail(\'' + esc(e.id) + '\')">';
         html += '<div class="flex items-start justify-between gap-2">';
         html += '<div class="flex-1 min-w-0">';
         html += '<div class="font-semibold text-sm truncate">' + from + '</div>';
-        html += '<div class="text-sm text-gray-200 truncate">' + subj + '</div>';
-        html += '<div class="text-xs text-gray-500 truncate mt-1">' + snippet + '</div>';
+        html += '<div class="text-sm text-secondary truncate">' + subj + '</div>';
+        html += '<div class="text-xs text-muted truncate mt-1">' + snippet + '</div>';
         html += '</div>';
         html += '<div class="text-right flex-shrink-0">';
-        html += '<div class="text-xs text-gray-500 whitespace-nowrap">' + shortDate + '</div>';
-        html += '<button onclick="event.stopPropagation(); draftReply(\'' + esc(e.id) + '\', this)" class="mt-2 bg-cyan-700 hover:bg-cyan-600 text-white text-xs rounded-lg px-2 py-1 transition">Reply</button>';
+        html += '<div class="text-xs text-muted whitespace-nowrap">' + shortDate + '</div>';
+        html += '<button onclick="event.stopPropagation(); draftReply(\'' + esc(e.id) + '\', this)" class="btn btn-reply mt-2">Reply</button>';
         html += '</div></div>';
         html += '<div id="draft-' + e.id + '" class="hidden mt-2"></div>';
         html += '</div>';
@@ -1053,29 +1052,29 @@ async function loadAgents() {
         var sched = await api('/api/agents/scheduler');
         schedEl.textContent = sched.running ? 'Scheduler: ON (' + sched.scheduled_jobs.length + ' jobs)' : 'Scheduler: OFF';
         if (!data.agents || !data.agents.length) {
-            listEl.innerHTML = '<div class="text-gray-400 text-sm text-center py-4">No agents configured</div>';
+            listEl.innerHTML = '<div class="text-muted text-sm text-center py-4">No agents configured</div>';
             return;
         }
         var html = '';
         data.agents.forEach(function(a) {
             var enabled = a.enabled;
-            var badge = enabled ? '<span class="text-xs bg-green-700 text-green-200 px-2 py-0.5 rounded-full">ON</span>' : '<span class="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full">OFF</span>';
+            var badge = enabled ? '<span class="badge badge-on">ON</span>' : '<span class="badge badge-off">OFF</span>';
             var lastRun = a.last_run ? new Date(a.last_run * 1000).toLocaleString() : 'Never';
-            var lastStatus = a.last_success === true ? '<span class="text-green-400 text-xs">OK</span>' : a.last_success === false ? '<span class="text-red-400 text-xs">FAIL</span>' : '';
+            var lastStatus = a.last_success === true ? '<span class="text-success text-xs">OK</span>' : a.last_success === false ? '<span class="text-danger text-xs">FAIL</span>' : '';
             var sched = a.schedule || {};
             var schedStr = '';
             if (sched.type === 'interval') schedStr = 'Every ' + (sched.minutes || '?') + ' min';
             else if (sched.type === 'cron') { schedStr = sched.hour + ':' + String(sched.minute || 0).padStart(2, '0'); if (sched.day_of_week) schedStr += ' (' + sched.day_of_week + ')'; }
             else schedStr = sched.type || 'manual';
 
-            html += '<div class="bg-gray-800 rounded-xl p-3 fade-in">';
+            html += '<div class="card card-sm fade-in">';
             html += '<div class="flex items-center justify-between">';
             html += '<div class="flex items-center gap-2">' + badge + ' <span class="font-semibold text-sm">' + esc(a.display_name) + '</span></div>';
             html += '<div class="flex items-center gap-2">';
-            html += '<button onclick="triggerAgent(\'' + esc(a.agent_id) + '\')" class="bg-cyan-700 hover:bg-cyan-600 text-white text-xs rounded-lg px-2 py-1 transition">Run</button>';
-            html += '<button onclick="toggleAgent(\'' + esc(a.agent_id) + '\', ' + !enabled + ')" class="bg-gray-700 hover:bg-gray-600 text-white text-xs rounded-lg px-2 py-1 transition">' + (enabled ? 'Disable' : 'Enable') + '</button>';
+            html += '<button onclick="triggerAgent(\'' + esc(a.agent_id) + '\')" class="btn btn-sm">Run</button>';
+            html += '<button onclick="toggleAgent(\'' + esc(a.agent_id) + '\', ' + !enabled + ')" class="btn btn-cancel" style="padding:6px 12px; font-size:12px; border-radius:8px;">' + (enabled ? 'Disable' : 'Enable') + '</button>';
             html += '</div></div>';
-            html += '<div class="flex items-center gap-3 mt-1 text-xs text-gray-500">';
+            html += '<div class="flex items-center gap-3 mt-1 text-xs text-muted">';
             html += '<span>' + schedStr + '</span>';
             html += '<span>Last: ' + lastRun + '</span>';
             html += lastStatus;
@@ -1123,27 +1122,27 @@ async function loadAgentLogs() {
     try {
         var data = await api('/api/agents/logs?limit=10');
         if (!data.logs || !data.logs.length) {
-            el.innerHTML = '<div class="text-gray-500 text-xs text-center">No activity yet</div>';
+            el.innerHTML = '<div class="text-muted text-xs text-center">No activity yet</div>';
             return;
         }
         var html = '';
         data.logs.forEach(function(l) {
-            var ok = l.success ? '<span class="text-green-400">OK</span>' : '<span class="text-red-400">FAIL</span>';
+            var ok = l.success ? '<span class="text-success">OK</span>' : '<span class="text-danger">FAIL</span>';
             var ts = '';
             try { ts = new Date(l.timestamp).toLocaleString(); } catch(e) { ts = l.timestamp || ''; }
-            html += '<div class="bg-gray-800 rounded-lg p-2 text-xs flex items-center justify-between gap-2">';
-            html += '<div class="flex items-center gap-2">' + ok + ' <span class="text-gray-300 font-medium">' + esc(l.agent_id) + '</span></div>';
-            html += '<div class="flex items-center gap-2 text-gray-500">';
+            html += '<div class="card card-sm text-xs flex items-center justify-between gap-2">';
+            html += '<div class="flex items-center gap-2">' + ok + ' <span class="text-secondary font-semibold">' + esc(l.agent_id) + '</span></div>';
+            html += '<div class="flex items-center gap-2 text-muted">';
             html += '<span>' + (l.emails_processed || 0) + ' emails</span>';
             html += '<span>' + (l.execution_time_ms || 0) + 'ms</span>';
             html += '<span>' + ts + '</span>';
-            html += '<button onclick="agentFeedback(\'' + esc(l.agent_id) + '\', ' + l.id + ', \'thumbs_up\')" class="hover:text-green-400" title="Good">+</button>';
-            html += '<button onclick="agentFeedback(\'' + esc(l.agent_id) + '\', ' + l.id + ', \'thumbs_down\')" class="hover:text-red-400" title="Bad">-</button>';
+            html += '<button onclick="agentFeedback(\'' + esc(l.agent_id) + '\', ' + l.id + ', \'thumbs_up\')" class="link-accent" title="Good">+</button>';
+            html += '<button onclick="agentFeedback(\'' + esc(l.agent_id) + '\', ' + l.id + ', \'thumbs_down\')" class="link-accent" style="color:var(--danger);" title="Bad">-</button>';
             html += '</div></div>';
         });
         el.innerHTML = html;
     } catch (e) {
-        el.innerHTML = '<div class="text-red-400 text-xs">' + esc(e.message) + '</div>';
+        el.innerHTML = '<div class="text-danger text-xs">' + esc(e.message) + '</div>';
     }
 }
 
@@ -1153,27 +1152,27 @@ async function loadAgentAudit() {
     try {
         var data = await api('/api/agents/audit?limit=10');
         if (!data.audit || !data.audit.length) {
-            el.innerHTML = '<div class="text-gray-500 text-xs text-center">No config changes yet</div>';
+            el.innerHTML = '<div class="text-muted text-xs text-center">No config changes yet</div>';
             return;
         }
         var html = '';
         data.audit.forEach(function(a) {
-            var approved = a.approved ? '<span class="text-green-400 text-xs">APPROVED</span>' : '<span class="text-red-400 text-xs">REJECTED</span>';
+            var approved = a.approved ? '<span class="text-success text-xs">APPROVED</span>' : '<span class="text-danger text-xs">REJECTED</span>';
             var ts = '';
             try { ts = new Date(a.timestamp).toLocaleString(); } catch(e) { ts = a.timestamp || ''; }
-            html += '<div class="bg-gray-800 rounded-lg p-2 text-xs">';
+            html += '<div class="card card-sm text-xs">';
             html += '<div class="flex items-center justify-between">';
-            html += '<span class="text-gray-300 font-medium">' + esc(a.agent_id) + '</span>';
+            html += '<span class="text-secondary font-semibold">' + esc(a.agent_id) + '</span>';
             html += '<span>' + approved + '</span>';
             html += '</div>';
-            html += '<div class="text-gray-500 mt-1">v' + (a.version_before || '?') + ' &rarr; v' + (a.version_after || '?') + ' &middot; ' + esc(a.field_changed || '') + ' &middot; by ' + esc(a.proposed_by || '') + '</div>';
-            if (a.reason) html += '<div class="text-gray-400 mt-0.5">' + esc(a.reason) + '</div>';
-            html += '<div class="text-gray-600 mt-0.5">' + ts + '</div>';
+            html += '<div class="text-muted mt-1">v' + (a.version_before || '?') + ' &rarr; v' + (a.version_after || '?') + ' &middot; ' + esc(a.field_changed || '') + ' &middot; by ' + esc(a.proposed_by || '') + '</div>';
+            if (a.reason) html += '<div class="text-secondary mt-1">' + esc(a.reason) + '</div>';
+            html += '<div class="text-dim mt-1">' + ts + '</div>';
             html += '</div>';
         });
         el.innerHTML = html;
     } catch (e) {
-        el.innerHTML = '<div class="text-red-400 text-xs">' + esc(e.message) + '</div>';
+        el.innerHTML = '<div class="text-danger text-xs">' + esc(e.message) + '</div>';
     }
 }
 
