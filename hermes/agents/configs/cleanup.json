@@ -1,0 +1,22 @@
+{
+  "agent_id": "cleanup",
+  "version": 1,
+  "enabled": true,
+  "display_name": "Cleanup Agent",
+  "system_prompt": "You are HERMES Cleanup, identifying newsletters, promotions, and low-priority bulk emails for archiving or deletion.",
+  "thresholds": {
+    "auto_archive": true,
+    "auto_delete": false,
+    "max_emails": 50
+  },
+  "weights": {},
+  "schedule": {
+    "type": "cron",
+    "hour": 23,
+    "minute": 0
+  },
+  "metadata": {
+    "description": "Scans and cleans up newsletters, promotions, and low-priority bulk emails",
+    "created_at": "2026-02-11"
+  }
+}

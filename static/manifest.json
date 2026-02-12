@@ -1,6 +1,6 @@
 {
-    "name": "HERMES Email Assistant",
-    "short_name": "HERMES",
+    "name": "MailTank Email Assistant",
+    "short_name": "MailTank",
     "description": "AI-powered email management",
     "start_url": "/",
     "display": "standalone",
@@ -16,6 +16,18 @@
             "src": "/static/icon-512.png",
             "sizes": "512x512",
             "type": "image/png"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Check Priority",
+            "url": "/?tab=priority",
+            "description": "Scan priority emails"
+        },
+        {
+            "name": "Chat",
+            "url": "/?tab=chat",
+            "description": "Chat with MailTank"
         }
     ]
 }

@@ -1,0 +1,19 @@
+{
+  "agent_id": "vip_monitor",
+  "version": 1,
+  "enabled": true,
+  "display_name": "VIP Monitor",
+  "system_prompt": "You are HERMES VIP Monitor, watching for emails from important contacts and VIP domains.",
+  "thresholds": {
+    "alert_on_count": 1
+  },
+  "weights": {},
+  "schedule": {
+    "type": "interval",
+    "minutes": 30
+  },
+  "metadata": {
+    "description": "Checks for unread emails from VIP contacts and domains",
+    "created_at": "2026-02-11"
+  }
+}

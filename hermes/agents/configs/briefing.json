@@ -1,0 +1,20 @@
+{
+  "agent_id": "briefing",
+  "version": 1,
+  "enabled": true,
+  "display_name": "Briefing Agent",
+  "system_prompt": "You are HERMES Briefing, generating concise morning email summaries. Focus on action items and important updates.",
+  "thresholds": {
+    "hours_back": 12
+  },
+  "weights": {},
+  "schedule": {
+    "type": "cron",
+    "hour": 7,
+    "minute": 0
+  },
+  "metadata": {
+    "description": "Generates a morning email briefing with action items and highlights",
+    "created_at": "2026-02-11"
+  }
+}

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import traceback
 from collections import Counter
 from datetime import datetime, timezone, timedelta
@@ -12,7 +13,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, render_template, redirect, url_for, session
 
 from hermes.ai import AIClient, HERMES_TOOLS
-from hermes.auth import check_password, require_auth
+from hermes.auth import check_password, require_auth, _check_api_key, _is_rate_limited, _record_failed_attempt
 from hermes.config import load_config
 from hermes.gmail import GmailClient
 from hermes.vip import (
@@ -26,7 +27,7 @@ from hermes.vip import (
     save_vips,
 )
 
-# ── App setup ─────────────────────────────────────────────────
+# -- App setup --
 
 _pkg_dir = Path(__file__).resolve().parent
 _project_dir = _pkg_dir.parent
@@ -37,11 +38,20 @@ app = Flask(
     static_folder=str(_project_dir / "static"),
 )
 
-# Session config
-app.secret_key = os.environ.get("SECRET_KEY") or os.environ.get("HERMES_WEB_PASSWORD") or "hermes-dev-key"
+# Session config -- fix secret key for production
+_secret = os.environ.get("SECRET_KEY") or os.environ.get("HERMES_WEB_PASSWORD")
+if not _secret and os.environ.get("RENDER"):
+    raise RuntimeError("SECRET_KEY required in production")
+app.secret_key = _secret or "hermes-dev-key-" + str(os.getpid())
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-# ── Lazy-init singletons ─────────────────────────────────────
+# Request size limit (16MB)
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+
+# Session timeout (2 hours)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=2)
+
+# -- Lazy-init singletons --
 
 _config = None
 _gmail = None
@@ -57,15 +67,74 @@ def _get_clients():
     return _config, _gmail, _ai
 
 
-# ── Login / Logout ───────────────────────────────────────────
+# -- Security headers --
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self'"
+    )
+    return response
+
+
+# -- Centralized error handlers --
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    app.logger.error(traceback.format_exc())
+    return jsonify({"error": "Internal server error"}), 500
+
+
+# -- CSRF helper --
+
+def _check_csrf():
+    """Check CSRF token for session-authenticated POST requests.
+    Returns None if OK, or a JSON error response if failed."""
+    # Skip CSRF if request has valid API key (programmatic access)
+    provided_key = request.headers.get("X-API-Key", "")
+    if provided_key and _check_api_key(provided_key):
+        return None
+    # For session-authenticated requests, verify CSRF token
+    if session.get("authenticated"):
+        csrf_token = request.headers.get("X-CSRF-Token", "")
+        expected = session.get("csrf_token", "")
+        if not expected or not csrf_token or csrf_token != expected:
+            return jsonify({"error": "CSRF token missing or invalid"}), 403
+    return None
+
+
+# -- Login / Logout --
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
+        # Rate limiting check
+        client_ip = request.remote_addr or "unknown"
+        if _is_rate_limited(client_ip):
+            return render_template("login.html", error="Too many failed attempts. Try again later."), 429
+
         password = request.form.get("password", "")
         if check_password(password):
             session["authenticated"] = True
+            session.permanent = True
+            # Generate CSRF token for the session
+            session.setdefault("csrf_token", secrets.token_hex(32))
             return redirect(url_for("index"))
+        _record_failed_attempt(client_ip)
         return render_template("login.html", error="Wrong password"), 401
     return render_template("login.html")
 
@@ -76,22 +145,38 @@ def logout():
     return redirect(url_for("login"))
 
 
-# ── Web UI ───────────────────────────────────────────────────
+# -- Web UI --
 
 @app.route("/")
 @require_auth
 def index():
-    return render_template("index.html")
+    # Ensure CSRF token exists in session
+    session.setdefault("csrf_token", secrets.token_hex(32))
+    return render_template("index.html", csrf_token=session["csrf_token"])
 
 
-# ── Health ───────────────────────────────────────────────────
+# -- Health --
 
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "service": "hermes"})
 
 
-# ── Stats (quick dashboard load) ─────────────────────────────
+@app.route("/api/health/ai")
+@require_auth
+def health_ai():
+    """Check AI backend connectivity."""
+    try:
+        config, gmail, ai = _get_clients()
+        result = ai.health_check()
+        status_code = 200 if result.get("status") == "ok" else 503
+        return jsonify(result), status_code
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "error": "Internal server error"}), 500
+
+
+# -- Stats (quick dashboard load) --
 
 @app.route("/api/stats")
 @require_auth
@@ -122,10 +207,11 @@ def stats():
             "vip_domains": len(vip_domains),
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Emails List ──────────────────────────────────────────────
+# -- Emails List --
 
 @app.route("/api/emails")
 @require_auth
@@ -135,7 +221,9 @@ def emails_list():
         config, gmail, ai = _get_clients()
         page = request.args.get("page", 1, type=int)
         per_page = request.args.get("per_page", 20, type=int)
-        per_page = min(per_page, 50)
+        # Input validation
+        page = max(1, page)
+        per_page = max(1, min(per_page, 50))
         q = request.args.get("q", "is:unread in:inbox")
 
         emails = gmail.get_messages(query=q, max_results=per_page, with_body=True)
@@ -157,10 +245,11 @@ def emails_list():
             "count": len(results),
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Email Detail ──────────────────────────────────────────────
+# -- Email Detail --
 
 @app.route("/api/email/<email_id>")
 @require_auth
@@ -171,23 +260,33 @@ def email_detail(email_id):
         email = gmail.get_message_by_id(email_id)
         return jsonify(email)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Send Reply ───────────────────────────────────────────────
+# -- Send Reply --
 
 @app.route("/api/send-reply", methods=["POST"])
 @require_auth
 def send_reply():
     """Send a reply to an email."""
+    # CSRF check
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
     try:
         config, gmail, ai = _get_clients()
         data = request.get_json(force=True)
         email_id = data.get("email_id", "")
         reply_body = data.get("body", "")
 
-        if not email_id or not reply_body:
-            return jsonify({"error": "email_id and body required"}), 400
+        # Input validation
+        if not isinstance(email_id, str) or not email_id.strip():
+            return jsonify({"error": "email_id must be a non-empty string"}), 400
+        if not isinstance(reply_body, str) or not reply_body.strip():
+            return jsonify({"error": "body must be a non-empty string"}), 400
+        if len(reply_body) > 50000:
+            return jsonify({"error": "body must be less than 50000 characters"}), 400
 
         # Get original email for threading
         original = gmail.get_message_by_id(email_id)
@@ -210,10 +309,11 @@ def send_reply():
 
         return jsonify({"sent": True, "message_id": msg_id, "to": to_addr})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── VIP Domain People ────────────────────────────────────────
+# -- VIP Domain People --
 
 @app.route("/api/vip/domain-people")
 @require_auth
@@ -244,22 +344,28 @@ def vip_domain_people():
         sorted_people = sorted(people.values(), key=lambda x: x["count"], reverse=True)
         return jsonify({"people": sorted_people, "total": len(emails)})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Draft Reply ──────────────────────────────────────────────
+# -- Draft Reply --
 
 @app.route("/api/draft-reply", methods=["POST"])
 @require_auth
 def draft_reply():
     """Generate an AI draft reply for a single email."""
+    # CSRF check
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
     try:
         config, gmail, ai = _get_clients()
         data = request.get_json(force=True)
         email_id = data.get("email_id", "")
 
-        if not email_id:
-            return jsonify({"error": "email_id required"}), 400
+        # Input validation
+        if not isinstance(email_id, str) or not email_id.strip():
+            return jsonify({"error": "email_id must be a non-empty string"}), 400
 
         email = gmail.get_message_by_id(email_id)
         reply = ai.draft_reply(email)
@@ -273,13 +379,18 @@ def draft_reply():
             "needs_reply": needs_reply,
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/draft-replies-batch", methods=["POST"])
 @require_auth
 def draft_replies_batch():
     """Generate AI draft replies for recent unread emails that need responses."""
+    # CSRF check
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
     try:
         config, gmail, ai = _get_clients()
         data = request.get_json(force=True) if request.is_json else {}
@@ -298,23 +409,30 @@ def draft_replies_batch():
             "needs_reply": sum(1 for r in results if r.get("needs_reply")),
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Chat ─────────────────────────────────────────────────────
+# -- Chat --
 
 @app.route("/api/chat", methods=["POST"])
 @require_auth
 def chat():
+    # CSRF check
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
     try:
         config, gmail, ai = _get_clients()
         data = request.get_json(force=True)
         messages = data.get("messages", [])
+        voice_mode = bool(data.get("voice_mode", False))
 
-        if not messages:
-            return jsonify({"error": "messages array required"}), 400
+        # Input validation
+        if not isinstance(messages, list) or len(messages) == 0:
+            return jsonify({"error": "messages must be a non-empty list"}), 400
 
-        resp = ai.chat(messages)
+        resp = ai.chat(messages, voice_mode=voice_mode)
 
         # If AI wants to call a tool, execute it server-side
         if resp.stop_reason == "tool_use":
@@ -323,13 +441,18 @@ def chat():
                     tool_result = _execute_tool(block.name, block.input, config, gmail, ai)
                     # Send tool result back to AI for a natural language summary
                     messages.append({"role": "assistant", "content": f'{{"tool": "{block.name}", "args": {json.dumps(block.input)}}}'})
-                    messages.append({"role": "user", "content": f"Tool result:\n{tool_result}\n\nPlease summarize this result for me in a conversational way."})
-                    summary_resp = ai.chat(messages)
+                    if voice_mode:
+                        summary_prompt = f"Tool result:\n{tool_result}\n\nSummarize this very briefly in 2-3 short spoken sentences. No lists, no bullet points."
+                    else:
+                        summary_prompt = f"Tool result:\n{tool_result}\n\nPlease summarize this result for me in a conversational way."
+                    messages.append({"role": "user", "content": summary_prompt})
+                    summary_resp = ai.chat(messages, voice_mode=voice_mode)
                     return jsonify({"response": summary_resp.text, "tool_used": block.name})
 
         return jsonify({"response": resp.text})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
 def _execute_tool(name: str, args: dict, config, gmail, ai) -> str:
@@ -449,7 +572,7 @@ def _execute_tool(name: str, args: dict, config, gmail, ai) -> str:
         return f"Error executing {name}: {str(e)}"
 
 
-# ── Briefing ─────────────────────────────────────────────────
+# -- Briefing --
 
 @app.route("/api/briefing")
 @require_auth
@@ -471,10 +594,11 @@ def briefing():
             **summary,
         })
     except Exception as e:
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Priority ─────────────────────────────────────────────────
+# -- Priority --
 
 @app.route("/api/priority")
 @require_auth
@@ -500,10 +624,11 @@ def priority():
             "classifications": classifications,
         })
     except Exception as e:
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── VIP ──────────────────────────────────────────────────────
+# -- VIP --
 
 @app.route("/api/vip")
 @require_auth
@@ -551,15 +676,20 @@ def vip():
             "emails": results,
         })
     except Exception as e:
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Cleanup ──────────────────────────────────────────────────
+# -- Cleanup --
 
 @app.route("/api/cleanup", methods=["POST"])
 @require_auth
 def cleanup():
-    """Auto-cleanup newsletters/promotions — no confirmation prompt."""
+    """Auto-cleanup newsletters/promotions -- no confirmation prompt."""
+    # CSRF check
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
     try:
         config, gmail, ai = _get_clients()
         emails = gmail.get_messages(
@@ -588,18 +718,25 @@ def cleanup():
             "kept": len(to_keep),
         })
     except Exception as e:
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Inbox Zero ───────────────────────────────────────────────
+# -- Inbox Zero --
 
 @app.route("/api/inbox-zero", methods=["POST"])
 @require_auth
 def inbox_zero():
-    """Process one batch of inbox emails — no confirmation prompt."""
+    """Process one batch of inbox emails -- no confirmation prompt."""
+    # CSRF check
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
     try:
         config, gmail, ai = _get_clients()
         batch_size = request.args.get("batch", 10, type=int)
+        # Input validation
+        batch_size = max(1, min(batch_size, 50))
 
         emails = gmail.get_messages(query="is:unread in:inbox", max_results=batch_size)
         if not emails:
@@ -633,10 +770,11 @@ def inbox_zero():
             "inbox_zero": unread_remaining == 0,
         })
     except Exception as e:
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Digest ───────────────────────────────────────────────────
+# -- Digest --
 
 @app.route("/api/digest")
 @require_auth
@@ -676,10 +814,11 @@ def digest():
         narrative = ai.generate_digest_narrative(stats_data)
         return jsonify({**stats_data, "narrative": narrative})
     except Exception as e:
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Domains ──────────────────────────────────────────────────
+# -- Domains --
 
 @app.route("/api/domains")
 @require_auth
@@ -692,10 +831,11 @@ def domains():
             "domains": vip_domains,
         })
     except Exception as e:
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── VIP Contacts List ────────────────────────────────────────
+# -- VIP Contacts List --
 
 @app.route("/api/vip/contacts")
 @require_auth
@@ -708,14 +848,19 @@ def vip_contacts():
             "contacts": vips,
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── VIP Check ────────────────────────────────────────────────
+# -- VIP Check --
 
 @app.route("/api/vip/check", methods=["POST"])
 @require_auth
 def vip_check():
+    # CSRF check
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
     try:
         config, gmail, ai = _get_clients()
         data = request.get_json(force=True)
@@ -734,10 +879,258 @@ def vip_check():
 
         return jsonify({"email": email_address, "is_vip": is_vip})
     except Exception as e:
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# ── Helpers ──────────────────────────────────────────────────
+# -- Agent Framework (lazy-init) --
+
+_agent_registry = None
+_agent_db = None
+_agent_scheduler = None
+_agent_learning = None
+
+
+def _get_agents():
+    """Lazy-init the agent framework on first access."""
+    global _agent_registry, _agent_db, _agent_scheduler, _agent_learning
+
+    if _agent_registry is not None:
+        return _agent_registry, _agent_db, _agent_scheduler, _agent_learning
+
+    config, gmail, ai = _get_clients()
+
+    from hermes.agents.base import AgentConfig
+    from hermes.agents.db import AgentDB
+    from hermes.agents.registry import AgentRegistry
+    from hermes.agents.learning import LearningManager
+    from hermes.agents.scheduler import AgentScheduler
+    from hermes.agents.director import DirectorAgent
+    from hermes.agents.triage import TriageAgent
+    from hermes.agents.vip_monitor import VIPMonitorAgent
+    from hermes.agents.briefing import BriefingAgent
+    from hermes.agents.cleanup import CleanupAgent
+    from hermes.agents.inbox_zero import InboxZeroAgent
+    from hermes.agents.digest import DigestAgent
+    from hermes.agents.voice import VoiceAgent
+
+    _agent_db = AgentDB(config.agent_db_path)
+    _agent_registry = AgentRegistry()
+
+    # Load configs and create agent instances
+    configs_dir = config.agent_configs_path
+    agent_classes = {
+        "triage": TriageAgent,
+        "vip_monitor": VIPMonitorAgent,
+        "briefing": BriefingAgent,
+        "cleanup": CleanupAgent,
+        "inbox_zero": InboxZeroAgent,
+        "digest": DigestAgent,
+        "voice": VoiceAgent,
+    }
+
+    for agent_id, cls in agent_classes.items():
+        config_path = configs_dir / f"{agent_id}.json"
+        if config_path.exists():
+            agent_cfg = AgentConfig.from_dict(json.loads(config_path.read_text()))
+        else:
+            agent_cfg = AgentConfig(agent_id=agent_id, display_name=cls.display_name)
+        agent = cls(config=config, ai=ai, gmail=gmail, agent_config=agent_cfg)
+        _agent_registry.register(agent)
+
+    # Director (needs db + registry)
+    director_config_path = configs_dir / "director.json"
+    if director_config_path.exists():
+        director_cfg = AgentConfig.from_dict(json.loads(director_config_path.read_text()))
+    else:
+        director_cfg = AgentConfig(agent_id="director", display_name="Director")
+    director = DirectorAgent(
+        config=config, ai=ai, gmail=gmail, agent_config=director_cfg,
+        db=_agent_db, registry=_agent_registry,
+    )
+    _agent_registry.register(director)
+
+    _agent_learning = LearningManager(_agent_db, _agent_registry, ai)
+    _agent_scheduler = AgentScheduler(_agent_registry, _agent_db, _agent_learning)
+
+    # Start scheduler if agents are enabled
+    if config.agents_enabled:
+        _agent_scheduler.start()
+
+    return _agent_registry, _agent_db, _agent_scheduler, _agent_learning
+
+
+# -- Agent API Endpoints --
+
+@app.route("/api/agents")
+@require_auth
+def agents_list():
+    """List all agents with status."""
+    try:
+        registry, db, scheduler, learning = _get_agents()
+        agents = registry.get_status_all()
+        return jsonify({"agents": agents})
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/agents/<agent_id>")
+@require_auth
+def agent_detail(agent_id):
+    """Agent detail + config + recent history."""
+    try:
+        registry, db, scheduler, learning = _get_agents()
+        agent = registry.get(agent_id)
+        if not agent:
+            return jsonify({"error": "Agent not found"}), 404
+        status = agent.get_status()
+        status["config"] = agent.agent_config.to_dict()
+        status["recent_executions"] = db.get_executions(agent_id, limit=10)
+        status["audit_log"] = db.get_audit_log(agent_id, limit=10)
+        return jsonify(status)
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/agents/<agent_id>/trigger", methods=["POST"])
+@require_auth
+def agent_trigger(agent_id):
+    """Manual agent execution."""
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
+    try:
+        registry, db, scheduler, learning = _get_agents()
+        agent = registry.get(agent_id)
+        if not agent:
+            return jsonify({"error": "Agent not found"}), 404
+        result = scheduler.trigger_agent(agent_id)
+        return jsonify({"result": result})
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/agents/<agent_id>/enable", methods=["POST"])
+@require_auth
+def agent_enable(agent_id):
+    """Enable or disable an agent."""
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
+    try:
+        registry, db, scheduler, learning = _get_agents()
+        agent = registry.get(agent_id)
+        if not agent:
+            return jsonify({"error": "Agent not found"}), 404
+        data = request.get_json(force=True) if request.is_json else {}
+        enabled = data.get("enabled", not agent.agent_config.enabled)
+        agent.agent_config.enabled = bool(enabled)
+        agent.save_config()
+        return jsonify({"agent_id": agent_id, "enabled": agent.agent_config.enabled})
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/agents/<agent_id>/schedule", methods=["POST"])
+@require_auth
+def agent_schedule(agent_id):
+    """Update agent schedule."""
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
+    try:
+        registry, db, scheduler, learning = _get_agents()
+        agent = registry.get(agent_id)
+        if not agent:
+            return jsonify({"error": "Agent not found"}), 404
+        data = request.get_json(force=True)
+        new_schedule = data.get("schedule", {})
+        if not new_schedule:
+            return jsonify({"error": "schedule field required"}), 400
+
+        from hermes.agents.guardrails import Guardrails
+        ok, reason = Guardrails.validate_config_change(agent_id, "schedule", None, new_schedule)
+        if not ok:
+            return jsonify({"error": reason}), 400
+
+        scheduler.reschedule_agent(agent_id, new_schedule)
+        return jsonify({"agent_id": agent_id, "schedule": new_schedule})
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/agents/<agent_id>/feedback", methods=["POST"])
+@require_auth
+def agent_feedback(agent_id):
+    """Submit user feedback for an agent execution."""
+    csrf_err = _check_csrf()
+    if csrf_err:
+        return csrf_err
+    try:
+        registry, db, scheduler, learning = _get_agents()
+        data = request.get_json(force=True)
+        feedback_type = data.get("type", "")
+        if feedback_type not in ("thumbs_up", "thumbs_down", "correction"):
+            return jsonify({"error": "type must be thumbs_up, thumbs_down, or correction"}), 400
+        execution_id = data.get("execution_id")
+        feedback_data = data.get("data", {})
+        learning.record_feedback(agent_id, execution_id, feedback_type, feedback_data)
+        return jsonify({"recorded": True})
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/agents/logs")
+@require_auth
+def agent_logs():
+    """Execution log (filterable by agent_id query param)."""
+    try:
+        registry, db, scheduler, learning = _get_agents()
+        agent_id = request.args.get("agent_id")
+        limit = request.args.get("limit", 50, type=int)
+        limit = max(1, min(limit, 200))
+        logs = db.get_executions(agent_id, limit=limit)
+        return jsonify({"logs": logs})
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/agents/audit")
+@require_auth
+def agent_audit():
+    """Config change audit trail."""
+    try:
+        registry, db, scheduler, learning = _get_agents()
+        agent_id = request.args.get("agent_id")
+        limit = request.args.get("limit", 50, type=int)
+        limit = max(1, min(limit, 200))
+        audit = db.get_audit_log(agent_id, limit=limit)
+        return jsonify({"audit": audit})
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/agents/scheduler")
+@require_auth
+def agent_scheduler_status():
+    """Scheduler status."""
+    try:
+        registry, db, scheduler, learning = _get_agents()
+        return jsonify(scheduler.get_status())
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal server error"}), 500
+
+
+# -- Helpers --
 
 def _safe_parse_date(date_str: str):
     if not date_str:

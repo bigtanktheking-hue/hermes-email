@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
@@ -99,10 +101,10 @@ def load_vips(config: Config) -> list[dict]:
 
 
 def save_vips(vips: list[dict], config: Config):
-    """Save VIP list to data file."""
+    """Save VIP list to data file (atomic write)."""
     path = config.vip_data_path
     data = {"vips": vips, "updated": datetime.now(timezone.utc).isoformat()}
-    path.write_text(json.dumps(data, indent=2))
+    _atomic_write(path, json.dumps(data, indent=2))
 
 
 def needs_refresh(config: Config) -> bool:
@@ -156,10 +158,10 @@ def load_vip_domains(config: Config) -> list[dict]:
 
 
 def save_vip_domains(domains: list[dict], config: Config):
-    """Save VIP domain list to data file."""
+    """Save VIP domain list to data file (atomic write)."""
     path = config.vip_domains_path
     data = {"domains": domains, "updated": datetime.now(timezone.utc).isoformat()}
-    path.write_text(json.dumps(data, indent=2))
+    _atomic_write(path, json.dumps(data, indent=2))
 
 
 def add_vip_domain(domain: str, company: str, category: str, config: Config):
@@ -195,6 +197,21 @@ def is_vip_domain(email_address: str, domains: list[dict]) -> bool:
 
 
 # ── Helpers ────────────────────────────────────────────────────
+
+def _atomic_write(path: Path, content: str):
+    """Write content to a file atomically using tempfile + os.replace."""
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp_path, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
 
 def _extract_emails(header_value: str) -> list[str]:
     """Extract email addresses from a To/From header."""

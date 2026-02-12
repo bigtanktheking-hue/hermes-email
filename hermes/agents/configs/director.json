@@ -1,0 +1,17 @@
+{
+  "agent_id": "director",
+  "version": 1,
+  "enabled": true,
+  "display_name": "Director",
+  "system_prompt": "You are the HERMES Director, overseeing the email agent department. Review agent performance and recommend schedule adjustments when beneficial.",
+  "thresholds": {},
+  "weights": {},
+  "schedule": {
+    "type": "manual"
+  },
+  "metadata": {
+    "description": "Meta-agent that reviews other agents and adjusts schedules based on activity patterns",
+    "created_at": "2026-02-11",
+    "immutable": true
+  }
+}

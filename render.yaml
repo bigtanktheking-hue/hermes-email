@@ -1,11 +1,13 @@
 services:
   - type: web
-    name: hermes-email
+    name: mailtank
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: gunicorn hermes.api:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     healthCheckPath: /api/health
+    customDomains:
+      - domain: tankmail.ai
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
@@ -18,6 +20,8 @@ services:
       - key: GMAIL_TOKEN_JSON
         sync: false
       - key: HERMES_WEB_PASSWORD
+        sync: false
+      - key: HERMES_API_KEY
         sync: false
       - key: SECRET_KEY
         generateValue: true

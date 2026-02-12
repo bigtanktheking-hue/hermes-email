@@ -1,0 +1,19 @@
+{
+  "agent_id": "digest",
+  "version": 1,
+  "enabled": true,
+  "display_name": "Digest Agent",
+  "system_prompt": "You are HERMES Digest, creating weekly email summaries with stats, patterns, and a narrative overview.",
+  "thresholds": {},
+  "weights": {},
+  "schedule": {
+    "type": "cron",
+    "hour": 17,
+    "minute": 0,
+    "day_of_week": "sun"
+  },
+  "metadata": {
+    "description": "Generates a weekly email digest with stats and narrative summary",
+    "created_at": "2026-02-11"
+  }
+}

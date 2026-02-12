@@ -54,7 +54,7 @@ def morning_briefing(gmail: GmailClient, ai: AIClient, config: Config, hours_bac
     query = f"after:{epoch} in:inbox"
 
     with spinner("Fetching recent emails..."):
-        emails = gmail.get_messages(query=query, max_results=100)
+        emails = gmail.get_messages(query=query, max_results=config.max_messages_cap)
 
     if not emails:
         print_info(f"No emails in the last {hours_back} hours.")
@@ -79,7 +79,7 @@ def morning_briefing(gmail: GmailClient, ai: AIClient, config: Config, hours_bac
 def priority_scan(gmail: GmailClient, ai: AIClient, config: Config) -> str:
     """Scan unread emails and classify by priority."""
     with spinner("Fetching unread emails..."):
-        emails = gmail.get_messages(query="is:unread in:inbox", max_results=50)
+        emails = gmail.get_messages(query="is:unread in:inbox", max_results=min(50, config.max_messages_cap))
 
     if not emails:
         print_info("No unread emails!")
@@ -264,8 +264,11 @@ def inbox_zero(gmail: GmailClient, ai: AIClient, config: Config, batch_size: int
     total_archived = 0
     total_trashed = 0
     total_kept = 0
+    max_iterations = 50  # Safety limit to prevent infinite loops
+    iteration = 0
 
-    while True:
+    while iteration < max_iterations:
+        iteration += 1
         with spinner("Fetching inbox emails..."):
             emails = gmail.get_messages(
                 query="is:unread in:inbox", max_results=batch_size

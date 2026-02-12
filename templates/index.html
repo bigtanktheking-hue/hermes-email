@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>HERMES</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MailTank</title>
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="#0891b2">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="HERMES">
+    <meta name="apple-mobile-web-app-title" content="MailTank">
     <link rel="apple-touch-icon" href="/static/icon-192.png">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
@@ -30,12 +30,18 @@
         .bottom-nav { padding-bottom: env(safe-area-inset-bottom, 8px); }
         .email-modal { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.8); overflow-y: auto; }
         .email-modal-content { min-height: 100vh; }
+        /* Voice UI */
+        #mic-btn.listening { background: #ef4444; animation: pulse-mic 1.5s ease-in-out infinite; }
+        #mic-btn.processing { background: #f59e0b; }
+        @keyframes pulse-mic { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); } 50% { box-shadow: 0 0 0 10px rgba(239,68,68,0); } }
+        #voice-indicator .red-dot { width: 8px; height: 8px; background: #ef4444; border-radius: 50%; animation: blink-dot 1s step-end infinite; }
+        @keyframes blink-dot { 50% { opacity: 0; } }
     </style>
 </head>
 <body class="text-gray-100">
 
     <!-- Email Detail Modal -->
-    <div id="email-modal" class="email-modal hidden">
+    <div id="email-modal" class="email-modal hidden" role="dialog" aria-modal="true" aria-label="Email detail">
         <div class="email-modal-content bg-gray-900 p-4">
             <div class="flex items-center justify-between mb-4">
                 <button onclick="closeEmailModal()" class="text-gray-400 hover:text-white flex items-center gap-1">
@@ -64,7 +70,7 @@
     <header class="sticky top-0 z-40 bg-gray-900 bg-opacity-95 backdrop-filter backdrop-blur px-4 py-3 flex items-center justify-between border-b border-gray-700">
         <div class="flex items-center gap-2">
             <span class="text-xl">&#9889;</span>
-            <h1 class="text-lg font-bold text-cyan-400">HERMES</h1>
+            <h1 class="text-lg font-bold text-cyan-400">MailTank</h1>
         </div>
         <a href="/logout" class="text-gray-400 text-sm hover:text-white">Logout</a>
     </header>
@@ -150,6 +156,11 @@
 
     <!-- Emails Tab -->
     <div id="tab-emails" class="tab-content p-4">
+        <div class="px-4 pt-2 pb-1">
+          <input id="emailSearch" type="search" placeholder="Search emails..." 
+            class="w-full bg-gray-800 text-white rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+            onkeydown="if(event.key==='Enter') searchEmails(this.value)">
+        </div>
         <div class="flex items-center justify-between mb-3">
             <h2 class="text-lg font-semibold">Unread Emails</h2>
             <button onclick="draftAllReplies()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold rounded-lg px-4 py-2 transition">
@@ -164,18 +175,46 @@
     <div id="tab-chat" class="tab-content flex flex-col" style="height: calc(100vh - 130px);">
         <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3">
             <div class="chat-bubble bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 text-sm fade-in">
-                Hi! I'm HERMES, your email assistant. Ask me anything about your inbox — I can scan priorities, check VIP emails, clean up newsletters, and more.
+                Hi! I'm MailTank, your email assistant. Ask me anything about your inbox — I can scan priorities, check VIP emails, clean up newsletters, and more.
             </div>
         </div>
         <div class="p-3 border-t border-gray-700 bg-gray-900">
+            <div id="voice-indicator" class="hidden flex items-center gap-2 px-3 py-1.5 mb-2 text-xs text-red-300">
+                <span class="red-dot"></span>
+                <span id="voice-status-text">Listening...</span>
+            </div>
+            <div id="voice-output-toggle" class="hidden flex items-center gap-2 px-3 py-1 mb-2">
+                <input type="checkbox" id="voice-output-cb" checked onchange="toggleVoiceOutput(this.checked)" class="accent-cyan-500">
+                <label for="voice-output-cb" class="text-xs text-gray-400 select-none">Read responses aloud</label>
+            </div>
             <form id="chat-form" class="flex gap-2">
-                <input id="chat-input" type="text" placeholder="Ask HERMES..."
+                <input id="chat-input" type="text" placeholder="Ask MailTank..."
                     autocomplete="off"
                     class="flex-1 bg-gray-800 text-white rounded-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                <button type="button" id="mic-btn" onclick="toggleVoice()" class="hidden bg-gray-700 hover:bg-gray-600 text-white rounded-full w-11 h-11 flex items-center justify-center transition flex-shrink-0" aria-label="Voice input">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 7v4m-4 0h8m-4-12a3 3 0 00-3 3v4a3 3 0 006 0V8a3 3 0 00-3-3z"/></svg>
+                </button>
                 <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white rounded-full w-11 h-11 flex items-center justify-center transition flex-shrink-0">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
                 </button>
             </form>
+        </div>
+    </div>
+
+    <!-- Agents Tab -->
+    <div id="tab-agents" class="tab-content p-4 space-y-3">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="text-lg font-semibold">Agent Department</h2>
+            <div id="scheduler-status" class="text-xs text-gray-500"></div>
+        </div>
+        <div id="agents-list" class="space-y-2"></div>
+        <div class="mt-4">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase mb-2">Recent Activity</h3>
+            <div id="agents-logs" class="space-y-2"></div>
+        </div>
+        <div class="mt-4">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase mb-2">Evolution History</h3>
+            <div id="agents-audit" class="space-y-2"></div>
         </div>
     </div>
 
@@ -195,32 +234,42 @@
 
     <!-- Bottom Navigation -->
     <nav class="bottom-nav fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 flex z-50">
-        <button onclick="switchTab('dashboard')" class="nav-btn active flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="dashboard">
+        <button onclick="switchTab('dashboard')" class="nav-btn active flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="dashboard" aria-label="Home">
             <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
             Home
         </button>
-        <button onclick="switchTab('priority')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="priority">
+        <button onclick="switchTab('priority')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="priority" aria-label="Priority">
             <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
             Priority
         </button>
-        <button onclick="switchTab('actions')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="actions">
+        <button onclick="switchTab('actions')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="actions" aria-label="Actions">
             <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             Actions
         </button>
-        <button onclick="switchTab('emails')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="emails">
+        <button onclick="switchTab('emails')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="emails" aria-label="Emails">
             <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
             Emails
         </button>
-        <button onclick="switchTab('chat')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="chat">
+        <button onclick="switchTab('chat')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="chat" aria-label="Chat">
             <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
             Chat
         </button>
-        <button onclick="switchTab('settings')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="settings">
+        <button onclick="switchTab('agents')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="agents" aria-label="Agents">
+            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            Agents
+        </button>
+        <button onclick="switchTab('settings')" class="nav-btn flex-1 flex flex-col items-center py-2 pt-3 text-xs text-gray-400" data-tab="settings" aria-label="Settings">
             <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             Settings
         </button>
     </nav>
 
+    <script>window.CSRF_TOKEN = "{{ csrf_token }}";</script>
     <script src="/static/app.js"></script>
+    <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/static/sw.js').catch(function() {});
+    }
+    </script>
 </body>
 </html>

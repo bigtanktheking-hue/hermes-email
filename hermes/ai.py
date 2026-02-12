@@ -149,6 +149,34 @@ class AIClient:
         else:
             log.info("AI backend: Ollama (%s)", self.model)
 
+    def health_check(self) -> dict:
+        """Check if the AI backend is reachable and responding."""
+        try:
+            if self.backend == "groq":
+                resp = self._client.get(
+                    f"{self.base_url}/models",
+                    headers={"Authorization": f"Bearer {self._groq_key}"},
+                    timeout=10.0,
+                )
+                resp.raise_for_status()
+                return {"status": "ok", "backend": "groq", "model": self.model}
+            else:
+                resp = self._client.get(
+                    f"{self.base_url}/api/tags",
+                    timeout=10.0,
+                )
+                resp.raise_for_status()
+                models = [m["name"] for m in resp.json().get("models", [])]
+                available = self.model in models or any(self.model in m for m in models)
+                return {
+                    "status": "ok" if available else "model_missing",
+                    "backend": "ollama",
+                    "model": self.model,
+                    "available_models": models[:10],
+                }
+        except Exception as e:
+            return {"status": "error", "backend": self.backend, "error": str(e)}
+
     # ── Backend-specific generate/chat ─────────────────────────
 
     def _generate(self, prompt: str, system: str = "") -> str:
@@ -404,7 +432,7 @@ Otherwise, write just the reply body text (no subject line, no greeting headers 
                 })
         return results
 
-    def chat(self, messages: list[dict]) -> OllamaResponse:
+    def chat(self, messages: list[dict], voice_mode: bool = False) -> OllamaResponse:
         """Chat mode with tool dispatch via intent parsing.
 
         Returns an OllamaResponse that mimics the shape cli.py expects.
@@ -420,6 +448,13 @@ Available tools:
 If the user is just chatting or the request doesn't match a tool, respond normally with text.
 If a tool matches, respond ONLY with the JSON tool call. No other text."""
 
+        if voice_mode:
+            system += (
+                "\n\nThe user is speaking via voice. Keep ALL responses to 2-3 short sentences maximum. "
+                "Use natural spoken language — no bullet points, no numbered lists, no markdown. "
+                "Be conversational as if speaking on the phone."
+            )
+
         text = self._chat(messages, system=system)
 
         # Check if the response is a tool call
@@ -432,6 +467,41 @@ If a tool matches, respond ONLY with the JSON tool call. No other text."""
             return resp
 
         return OllamaResponse(text=text, stop_reason="end_turn")
+
+    # ── Agent self-modification evaluation ──────────────────────────
+
+    def evaluate_config_change(
+        self,
+        agent_id: str,
+        current_config: dict,
+        proposed_change: dict | None,
+        context: dict,
+    ) -> dict:
+        """LLM evaluates whether a proposed config change should be approved.
+
+        Returns {"approve": bool, "reasoning": str, "modified_change": dict|None}
+        """
+        prompt = f"""You are evaluating a proposed configuration change for HERMES agent "{agent_id}".
+
+Current config:
+{json.dumps(current_config, indent=2)}
+
+Context (recent performance, feedback):
+{json.dumps(context, indent=2, default=str)}
+
+{"Proposed change: " + json.dumps(proposed_change, indent=2) if proposed_change else "No specific change proposed — analyze context and suggest improvements if warranted."}
+
+Respond with JSON:
+{{"approve": true/false, "reasoning": "Why this change should/shouldn't be made", "modified_change": {{"thresholds": {{}}, "weights": {{}}, "schedule": {{}}}} or null}}
+
+Only approve changes that clearly improve performance. Be conservative.
+Respond ONLY with valid JSON."""
+
+        text = self._generate(
+            prompt,
+            system="You are a HERMES configuration evaluator. Respond ONLY with valid JSON. No markdown fences.",
+        )
+        return self._parse_json_response(text, {"approve": False, "reasoning": "Parse error", "modified_change": None})
 
     # ── Helpers ────────────────────────────────────────────────────
 
@@ -452,10 +522,36 @@ If a tool matches, respond ONLY with the JSON tool call. No other text."""
                 tool_args = data.get("args", {})
                 valid_tools = {t["name"] for t in HERMES_TOOLS}
                 if tool_name in valid_tools:
+                    tool_args = self._validate_tool_input(tool_name, tool_args)
                     return tool_name, tool_args
         except (json.JSONDecodeError, KeyError):
             pass
         return None
+
+    def _validate_tool_input(self, tool_name: str, args: dict) -> dict:
+        """Validate and sanitize tool inputs."""
+        clean = {}
+        if tool_name == "morning_briefing":
+            hours = args.get("hours_back", 12)
+            clean["hours_back"] = max(1, min(int(hours) if isinstance(hours, (int, float)) else 12, 168))
+        elif tool_name == "inbox_zero":
+            bs = args.get("batch_size", 10)
+            clean["batch_size"] = max(1, min(int(bs) if isinstance(bs, (int, float)) else 10, 50))
+        elif tool_name == "search_emails":
+            query = args.get("query", "")
+            if isinstance(query, str):
+                clean["query"] = query[:500]
+        return clean
+
+    def _sanitize_text(self, text: str) -> str:
+        """Sanitize email content to reduce prompt injection risk."""
+        if not text:
+            return ""
+        # Remove common injection patterns
+        import re
+        text = re.sub(r"(?i)(ignore|disregard|forget)\s+(all\s+)?(previous|above|prior)\s+(instructions?|prompts?|rules?)", "[filtered]", text)
+        text = re.sub(r"(?i)system\s*:\s*", "", text)
+        return text[:2000]
 
     def _format_emails_for_prompt(self, emails: list[dict]) -> str:
         """Format emails into a compact text block for prompts."""
@@ -463,13 +559,13 @@ If a tool matches, respond ONLY with the JSON tool call. No other text."""
         for i, e in enumerate(emails, 1):
             lines = [
                 f"--- Email {i} (id: {e['id']}) ---",
-                f"From: {e.get('from', 'unknown')}",
-                f"Subject: {e.get('subject', '(no subject)')}",
+                f"From: {self._sanitize_text(e.get('from', 'unknown'))}",
+                f"Subject: {self._sanitize_text(e.get('subject', '(no subject)'))}",
                 f"Date: {e.get('date', '')}",
             ]
             preview = e.get("body_preview") or e.get("snippet", "")
             if preview:
-                lines.append(f"Preview: {preview[:300]}")
+                lines.append(f"Preview: {self._sanitize_text(preview[:300])}")
             parts.append("\n".join(lines))
         return "\n\n".join(parts)
 

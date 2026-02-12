@@ -57,7 +57,7 @@ def _handle_errors(f):
 
 @click.group()
 def main():
-    """HERMES — Email Automation System."""
+    """MailTank — AI Email Command Center."""
     pass
 
 
@@ -162,7 +162,7 @@ def digest():
 @main.command()
 @_handle_errors
 def chat():
-    """Interactive chat mode — talk to HERMES in natural language."""
+    """Interactive chat mode — talk to MailTank in natural language."""
     print_banner()
     config, gmail, ai = _setup()
 
@@ -263,7 +263,7 @@ def chat():
             ]
             if text_parts:
                 reply = "\n".join(text_parts)
-                console.print(f"\n[bold cyan]HERMES:[/bold cyan] {reply}\n")
+                console.print(f"\n[bold cyan]MailTank:[/bold cyan] {reply}\n")
                 conversation.append({"role": "assistant", "content": reply})
 
         except Exception as e:
@@ -273,11 +273,173 @@ def chat():
                 conversation.pop()
 
 
+@main.group()
+def agents():
+    """Manage MailTank autonomous agents."""
+    pass
+
+
+@agents.command("status")
+@_handle_errors
+def agents_status():
+    """Show all agents with their status."""
+    print_banner()
+    config, gmail, ai = _setup()
+
+    import json
+    from hermes.agents.base import AgentConfig
+    from hermes.agents.registry import AgentRegistry
+    from hermes.agents.triage import TriageAgent
+    from hermes.agents.vip_monitor import VIPMonitorAgent
+    from hermes.agents.briefing import BriefingAgent
+    from hermes.agents.cleanup import CleanupAgent
+    from hermes.agents.inbox_zero import InboxZeroAgent
+    from hermes.agents.digest import DigestAgent
+    from hermes.agents.voice import VoiceAgent
+    from hermes.agents.director import DirectorAgent
+    from hermes.agents.db import AgentDB
+
+    registry = AgentRegistry()
+    configs_dir = config.agent_configs_path
+
+    agent_classes = {
+        "triage": TriageAgent,
+        "vip_monitor": VIPMonitorAgent,
+        "briefing": BriefingAgent,
+        "cleanup": CleanupAgent,
+        "inbox_zero": InboxZeroAgent,
+        "digest": DigestAgent,
+        "voice": VoiceAgent,
+    }
+
+    for agent_id, cls in agent_classes.items():
+        config_path = configs_dir / f"{agent_id}.json"
+        if config_path.exists():
+            agent_cfg = AgentConfig.from_dict(json.loads(config_path.read_text()))
+        else:
+            agent_cfg = AgentConfig(agent_id=agent_id, display_name=cls.display_name)
+        agent = cls(config=config, ai=ai, gmail=gmail, agent_config=agent_cfg)
+        registry.register(agent)
+
+    # Director
+    director_path = configs_dir / "director.json"
+    db = AgentDB(config.agent_db_path)
+    if director_path.exists():
+        dcfg = AgentConfig.from_dict(json.loads(director_path.read_text()))
+    else:
+        dcfg = AgentConfig(agent_id="director", display_name="Director")
+    director = DirectorAgent(config=config, ai=ai, gmail=gmail, agent_config=dcfg, db=db, registry=registry)
+    registry.register(director)
+
+    console.print("\n[bold cyan]MailTank Agent Department[/bold cyan]\n")
+    for agent in registry.all():
+        status = agent.get_status()
+        enabled = "[green]ON[/green]" if status["enabled"] else "[red]OFF[/red]"
+        sched = status.get("schedule", {})
+        stype = sched.get("type", "manual")
+        if stype == "interval":
+            sched_str = f"every {sched.get('minutes', '?')} min"
+        elif stype == "cron":
+            sched_str = f"cron {sched.get('hour', '*')}:{sched.get('minute', 0):02d}"
+            if sched.get("day_of_week"):
+                sched_str += f" ({sched['day_of_week']})"
+        else:
+            sched_str = stype
+        console.print(f"  {enabled}  [bold]{status['display_name']}[/bold] ({status['agent_id']}) — {sched_str}")
+
+    console.print()
+    db.close()
+
+
+@agents.command("run")
+@click.argument("agent_id")
+@_handle_errors
+def agents_run(agent_id):
+    """Manually trigger an agent by ID."""
+    print_banner()
+    config, gmail, ai = _setup()
+
+    import json as _json
+    from hermes.agents.base import AgentConfig
+    from hermes.agents.db import AgentDB
+    from hermes.agents.registry import AgentRegistry
+    from hermes.agents.learning import LearningManager
+    from hermes.agents.scheduler import AgentScheduler
+    from hermes.agents.director import DirectorAgent
+    from hermes.agents.triage import TriageAgent
+    from hermes.agents.vip_monitor import VIPMonitorAgent
+    from hermes.agents.briefing import BriefingAgent
+    from hermes.agents.cleanup import CleanupAgent
+    from hermes.agents.inbox_zero import InboxZeroAgent
+    from hermes.agents.digest import DigestAgent
+    from hermes.agents.voice import VoiceAgent
+
+    db = AgentDB(config.agent_db_path)
+    registry = AgentRegistry()
+    configs_dir = config.agent_configs_path
+
+    agent_classes = {
+        "triage": TriageAgent,
+        "vip_monitor": VIPMonitorAgent,
+        "briefing": BriefingAgent,
+        "cleanup": CleanupAgent,
+        "inbox_zero": InboxZeroAgent,
+        "digest": DigestAgent,
+        "voice": VoiceAgent,
+    }
+
+    for aid, cls in agent_classes.items():
+        cfg_path = configs_dir / f"{aid}.json"
+        if cfg_path.exists():
+            acfg = AgentConfig.from_dict(_json.loads(cfg_path.read_text()))
+        else:
+            acfg = AgentConfig(agent_id=aid, display_name=cls.display_name)
+        registry.register(cls(config=config, ai=ai, gmail=gmail, agent_config=acfg))
+
+    director_path = configs_dir / "director.json"
+    if director_path.exists():
+        dcfg = AgentConfig.from_dict(_json.loads(director_path.read_text()))
+    else:
+        dcfg = AgentConfig(agent_id="director", display_name="Director")
+    director = DirectorAgent(config=config, ai=ai, gmail=gmail, agent_config=dcfg, db=db, registry=registry)
+    registry.register(director)
+
+    learning = LearningManager(db, registry, ai)
+    scheduler = AgentScheduler(registry, db, learning)
+
+    agent = registry.get(agent_id)
+    if not agent:
+        print_error(f"Unknown agent: {agent_id}")
+        console.print(f"Available: {', '.join(registry.ids())}")
+        sys.exit(1)
+
+    console.print(f"\n[bold cyan]Running {agent.display_name}...[/bold cyan]")
+    with spinner(f"Executing {agent_id}..."):
+        result = scheduler.trigger_agent(agent_id)
+
+    if result:
+        success = "[green]SUCCESS[/green]" if result.get("success") else "[red]FAILED[/red]"
+        console.print(f"\n  Status: {success}")
+        console.print(f"  Time: {result.get('execution_time_ms', 0)}ms")
+        console.print(f"  Emails: {result.get('emails_processed', 0)}")
+        if result.get("data"):
+            for k, v in result["data"].items():
+                if isinstance(v, (str, int, float, bool)):
+                    console.print(f"  {k}: {v}")
+        if result.get("error"):
+            print_error(result["error"])
+    else:
+        print_error("No result returned")
+
+    console.print()
+    db.close()
+
+
 @main.command()
 @click.option("--port", default=5055, help="Port to run the API server on (default: 5055)")
 @click.option("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
 def serve(port, host):
-    """Start the HERMES REST API server (for n8n automation)."""
+    """Start the MailTank REST API server (for n8n automation)."""
     from hermes.api import app
-    console.print(f"[bold cyan]HERMES API[/bold cyan] starting on http://{host}:{port}")
+    console.print(f"[bold cyan]MailTank API[/bold cyan] starting on http://{host}:{port}")
     app.run(host=host, port=port, debug=False)

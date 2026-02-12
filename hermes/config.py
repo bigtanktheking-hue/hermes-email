@@ -6,6 +6,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def _is_production() -> bool:
+    """Check if running in production mode."""
+    return (
+        os.environ.get("FLASK_ENV") == "production"
+        or os.environ.get("RENDER", "").lower() == "true"
+    )
+
+
 def _project_dir() -> Path:
     """Return the project root (directory containing this package)."""
     return Path(__file__).resolve().parent.parent
@@ -39,9 +47,15 @@ class Config:
     repl_history_limit: int = 40
     web_password: str = ""
     secret_key: str = ""
+    production: bool = field(default_factory=_is_production)
+    agents_enabled: bool = True
+    agent_db_file: str = "hermes_agents.db"
+    agent_configs_dir: str = "hermes/agents/configs"
 
     def __post_init__(self):
         self._load_env()
+        # Re-evaluate production flag after .env is loaded
+        self.production = _is_production()
         if not self.anthropic_api_key:
             self.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if os.environ.get("OLLAMA_URL"):
@@ -62,6 +76,12 @@ class Config:
             self.secret_key = os.environ["SECRET_KEY"]
         elif not self.secret_key:
             self.secret_key = self.web_password or "hermes-dev-key"
+        # Production safety checks
+        if self.production:
+            if not self.secret_key or self.secret_key == "hermes-dev-key":
+                raise RuntimeError("SECRET_KEY must be set in production")
+            if not self.web_password:
+                raise RuntimeError("HERMES_WEB_PASSWORD must be set in production")
         # Gmail credentials from env vars (for cloud deploy)
         self._write_credentials_from_env()
 
@@ -111,6 +131,14 @@ class Config:
     @property
     def vip_domains_path(self) -> Path:
         return self.project_dir / self.vip_domains_file
+
+    @property
+    def agent_db_path(self) -> Path:
+        return self.project_dir / self.agent_db_file
+
+    @property
+    def agent_configs_path(self) -> Path:
+        return self.project_dir / self.agent_configs_dir
 
 
 def load_config() -> Config:

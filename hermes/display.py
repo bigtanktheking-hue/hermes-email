@@ -20,10 +20,10 @@ def spinner(message: str = "Working..."):
 
 
 def print_banner():
-    """Print the HERMES welcome banner."""
+    """Print the MailTank welcome banner."""
     console.print(
         Panel(
-            "[bold cyan]HERMES[/bold cyan] — Email Automation System",
+            "[bold cyan]MailTank[/bold cyan] — AI Email Command Center",
             border_style="cyan",
         )
     )

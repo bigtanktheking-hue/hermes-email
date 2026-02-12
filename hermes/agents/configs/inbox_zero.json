@@ -1,0 +1,18 @@
+{
+  "agent_id": "inbox_zero",
+  "version": 1,
+  "enabled": true,
+  "display_name": "Inbox Zero Agent",
+  "system_prompt": "You are HERMES Inbox Zero, processing emails in batches. Classify each as action-needed, read-and-archive, or junk.",
+  "thresholds": {
+    "batch_size": 10
+  },
+  "weights": {},
+  "schedule": {
+    "type": "manual"
+  },
+  "metadata": {
+    "description": "Processes inbox emails in batches toward inbox zero",
+    "created_at": "2026-02-11"
+  }
+}

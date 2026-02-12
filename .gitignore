@@ -9,6 +9,7 @@ build/
 token.json
 credentials.json
 hermes_data.json
+hermes_agents.db
 .venv/
 venv/
 .DS_Store
